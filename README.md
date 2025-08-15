@@ -69,7 +69,7 @@ if !disconnected.is_empty() {
 
 ### Cycle Support
 
-As of FLOWIP-082, topologies support multi-stage cycles to enable:
+This crate supports multi-stage cycles in topologies to enable:
 - **Feedback loops**: Output from downstream stages flowing back upstream
 - **Retry patterns**: Sending failed events back for reprocessing  
 - **Iterative processing**: Refining data through multiple passes
