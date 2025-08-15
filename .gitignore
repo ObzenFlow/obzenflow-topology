@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug files
+*.pdb
+
+# Backup files
+*.bak
+*.tmp
+
+# Documentation build
+/target/doc/
+
+# Test coverage
+*.profraw
+*.profdata
+/coverage/
+
+# Benchmark results
+/target/criterion/

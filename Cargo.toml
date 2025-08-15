@@ -1,0 +1,27 @@
+[package]
+name = "obzenflow-topology"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Flow topology graph structures for ObzenFlow"
+repository = "https://github.com/obzenflow/obzenflow-topology"
+keywords = ["graph", "topology", "flow", "dag", "pipeline"]
+categories = ["data-structures", "algorithms"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+ulid = { version = "1.0", features = ["serde"] }
+
+[dev-dependencies]
+serde_json = "1.0"
+insta = "1.34"
+
+# WASM support for Leptos UI
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[features]
+default = []
+# Optional: Integration test helpers
+test-utils = []
