@@ -1,16 +1,10 @@
 //! Stage shapes define connectivity patterns in the topology
 
 use crate::types::{StageType, SimpleStageType};
+use crate::ulid::Ulid;
 
-/// Port identifier for connecting stages
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PortId(pub String);
-
-impl PortId {
-    pub fn new() -> Self {
-        Self(ulid::Ulid::new().to_string())
-    }
-}
+/// Port identifier for connecting stages  
+pub type PortId = Ulid;
 
 /// Shape defines the connectivity of a stage
 #[derive(Debug, Clone)]

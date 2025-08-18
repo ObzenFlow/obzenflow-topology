@@ -9,6 +9,7 @@ pub mod stages;
 pub mod topology;
 pub mod types;
 pub mod validation;
+pub mod ulid;
 
 // Re-export core types for convenience
 pub use types::{StageId, StageType, SimpleStageType};
