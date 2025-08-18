@@ -20,7 +20,7 @@ impl StageInfo {
     /// Create with auto-generated name
     pub fn auto_named(id: StageId) -> Self {
         Self {
-            name: id.to_string(), // Uses Display impl which formats as "stage_<ulid>"
+            name: format!("stage_{}", id),
             id,
         }
     }

@@ -182,7 +182,7 @@ impl Topology {
 
         // Generate flow ID from topology structure
         // In production, this would be set during flow construction
-        use ulid::Ulid;
+        use crate::ulid::Ulid;
         Ulid::new().to_string()
     }
 
