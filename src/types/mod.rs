@@ -1,5 +1,5 @@
-pub mod stage_id;
 pub mod stage_type;
 
-pub use stage_id::StageId;
+// Use our custom ULID implementation
+pub use crate::ulid::Ulid as StageId;
 pub use stage_type::{StageType, SimpleStageType};
