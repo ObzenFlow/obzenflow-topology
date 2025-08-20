@@ -2,6 +2,9 @@ use obzenflow_topology::builder::TopologyBuilder;
 use obzenflow_topology::validation::TopologyError;
 use obzenflow_topology::StageId;
 
+mod common;
+use common::TestTopologyBuilder;
+
 #[test]
 fn test_empty_topology() {
     let builder = TopologyBuilder::new();
@@ -128,7 +131,9 @@ fn test_stage_name_retrieval() {
             assert_eq!(topology.stage_name(source_id), Some("source"));
             assert_eq!(topology.stage_name(transform_id), Some("transform"));
             assert_eq!(topology.stage_name(sink_id), Some("sink"));
-            assert_eq!(topology.stage_name(StageId::new()), None);
+            // Test with a non-existent ID
+            let non_existent = common::next_stage_id();
+            assert_eq!(topology.stage_name(non_existent), None);
         }
         Err(e) => panic!("Unexpected error: {}", e),
     }

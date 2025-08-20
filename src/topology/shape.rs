@@ -1,10 +1,28 @@
 //! Stage shapes define connectivity patterns in the topology
 
+use crate::stages::StageId;
 use crate::types::{StageType, SimpleStageType};
-use crate::ulid::Ulid;
+use core::fmt;
 
-/// Port identifier for connecting stages  
-pub type PortId = Ulid;
+/// Port identifier - composite of stage ID and local port number
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PortId {
+    pub stage: StageId,
+    pub port: usize,  // 0, 1, 2... within that stage
+}
+
+impl PortId {
+    pub fn new(stage: StageId, port: usize) -> Self {
+        Self { stage, port }
+    }
+}
+
+impl fmt::Display for PortId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:port{}", self.stage, self.port)
+    }
+}
 
 /// Shape defines the connectivity of a stage
 #[derive(Debug, Clone)]
@@ -48,6 +66,24 @@ impl Shape {
         }
     }
     
+    /// Create a source shape for the given stage
+    pub fn new_source(stage: StageId) -> Self {
+        Shape::Source { out: PortId::new(stage, 0) }
+    }
+    
+    /// Create a flow shape for the given stage
+    pub fn new_flow(stage: StageId) -> Self {
+        Shape::Flow {
+            in_port: PortId::new(stage, 0),
+            out: PortId::new(stage, 1),
+        }
+    }
+    
+    /// Create a sink shape for the given stage
+    pub fn new_sink(stage: StageId) -> Self {
+        Shape::Sink { in_port: PortId::new(stage, 0) }
+    }
+    
     /// Simple classification for backwards compatibility
     pub fn stage_type(&self) -> StageType {
         let simple = match self {
@@ -59,4 +95,3 @@ impl Shape {
         simple.into()
     }
 }
-
