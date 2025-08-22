@@ -19,9 +19,9 @@ impl TopologyBuilder {
         }
     }
 
-    /// Add a stage and optionally connect from current stage
-    pub fn add_stage(&mut self, name: Option<String>) -> StageId {
-        let id = StageId::new();
+    /// Production API: Add a stage with an explicit StageId
+    /// Use this when you have IDs from the application layer
+    pub fn add_stage_with_id(&mut self, id: StageId, name: Option<String>) -> StageId {
         let info = match name {
             Some(n) => StageInfo::new(id, n),
             None => StageInfo::auto_named(id),
@@ -36,6 +36,20 @@ impl TopologyBuilder {
 
         self.current_stage = Some(id);
         id
+    }
+
+    /// Convenience API: Add a stage with a deterministic generated ID
+    /// No RNG required - uses a simple counter for ID generation
+    pub fn add_stage(&mut self, name: Option<String>) -> StageId {
+        use once_cell::sync::Lazy;
+        use std::sync::Mutex;
+        
+        static COUNTER: Lazy<Mutex<u128>> = Lazy::new(|| Mutex::new(0));
+        let mut counter = COUNTER.lock().unwrap();
+        *counter += 1;
+        
+        let id = StageId::from_bytes((*counter).to_be_bytes());
+        self.add_stage_with_id(id, name)
     }
 
 
@@ -69,12 +83,13 @@ impl Default for TopologyBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Tests can use StageId::new() because dev-dependencies have gen feature
 
     #[test]
     fn test_builder_chaining() {
         let mut builder = TopologyBuilder::new();
 
-        // Build a simple chain
+        // Build a simple chain using test-only add_stage
         let s1 = builder.add_stage(Some("stage1".to_string()));
         let s2 = builder.add_stage(Some("stage2".to_string()));
         let s3 = builder.add_stage(Some("stage3".to_string()));
@@ -91,7 +106,7 @@ mod tests {
     fn test_builder_fan_in() {
         let mut builder = TopologyBuilder::new();
 
-        // Create two sources
+        // Create two sources using test-only add_stage
         let source1 = builder.add_stage(Some("source1".to_string()));
         builder.reset_current();
         let source2 = builder.add_stage(Some("source2".to_string()));
