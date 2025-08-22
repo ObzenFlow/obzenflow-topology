@@ -5,7 +5,7 @@
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use crate::types::StageId;
-use idkit::Id;
+use obzenflow_idkit::Id;
 
 /// Global counter for deterministic test IDs
 static COUNTER: Lazy<Mutex<u128>> = Lazy::new(|| Mutex::new(0));

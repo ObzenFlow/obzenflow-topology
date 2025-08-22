@@ -11,7 +11,12 @@ categories = ["data-structures", "algorithms"]
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
-idkit = { path = "../obzenflow-idkit", features = ["serde"] }  # NO gen - type only!
+# IMPORTANT: obzenflow-topology uses idkit for type-safety only, NOT for ID generation
+# - Backend (flowstate_rs) generates real ULIDs using the standard ulid crate
+# - Frontend (obzen-flow-ui) generates sequential IDs using idkit's gen feature
+# - This crate acts as a type-safe bridge between both worlds
+# - That's why we explicitly exclude the "gen" feature here
+obzenflow-idkit = { path = "../obzenflow-idkit", features = ["serde"] }  # NO gen - type only!
 once_cell = "1"
 
 [dev-dependencies]

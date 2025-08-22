@@ -1,6 +1,6 @@
 pub mod stage_type;
 
-use idkit::Id;
+use obzenflow_idkit::Id;
 
 // Domain marker type for stages in the topology
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
