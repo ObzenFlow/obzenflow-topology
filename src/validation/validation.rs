@@ -307,9 +307,9 @@ mod tests {
     #[test]
     fn test_validate_acyclic_simple_dag() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
         
         stages.insert(s1, ());
         stages.insert(s2, ());
@@ -325,9 +325,9 @@ mod tests {
     #[test]
     fn test_validate_acyclic_with_cycle() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
         
         stages.insert(s1, ());
         stages.insert(s2, ());
@@ -355,10 +355,10 @@ mod tests {
     #[test]
     fn test_disconnected_stages() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
-        let s4 = StageId::new(); // Disconnected
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
+        let s4 = crate::test_ids::next_stage_id(); // Disconnected
         
         stages.insert(s1, ());
         stages.insert(s2, ());
@@ -383,9 +383,9 @@ mod tests {
     #[test]
     fn test_no_disconnected_stages() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
         
         stages.insert(s1, ());
         stages.insert(s2, ());
@@ -408,9 +408,9 @@ mod tests {
     #[test]
     fn test_compute_sccs_simple_cycle() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
         
         stages.insert(s1, ());
         stages.insert(s2, ());
@@ -436,11 +436,11 @@ mod tests {
     #[test]
     fn test_compute_sccs_multiple_components() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
-        let s4 = StageId::new();
-        let s5 = StageId::new();
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
+        let s4 = crate::test_ids::next_stage_id();
+        let s5 = crate::test_ids::next_stage_id();
         
         stages.insert(s1, ());
         stages.insert(s2, ());
@@ -474,9 +474,9 @@ mod tests {
     #[test]
     fn test_compute_sccs_no_cycles() {
         let mut stages = HashMap::new();
-        let s1 = StageId::new();
-        let s2 = StageId::new();
-        let s3 = StageId::new();
+        let s1 = StageId::from_bytes(1u128.to_be_bytes());
+        let s2 = StageId::from_bytes(2u128.to_be_bytes());
+        let s3 = StageId::from_bytes(3u128.to_be_bytes());
         
         stages.insert(s1, ());
         stages.insert(s2, ());

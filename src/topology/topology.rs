@@ -177,13 +177,33 @@ impl Topology {
         "multi_source_flow".to_string()
     }
 
-    /// Get flow ID (unique identifier for this flow instance)
-    pub fn flow_id(&self) -> String {
-
-        // Generate flow ID from topology structure
-        // In production, this would be set during flow construction
-        use crate::ulid::Ulid;
-        Ulid::new().to_string()
+    /// Get topology fingerprint - deterministic hash of structure
+    /// Same topology structure always produces same fingerprint
+    pub fn topology_fingerprint(&self) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        
+        // 1) Canonicalize stages (sort by ULID bytes for determinism)
+        let mut stages: Vec<_> = self.stages.iter().collect();
+        stages.sort_unstable_by_key(|(id, _)| id.to_bytes());
+        
+        for (id, info) in stages {
+            id.to_bytes().hash(&mut hasher);
+            info.name.hash(&mut hasher);
+        }
+        
+        // 2) Canonicalize edges (sort for determinism)
+        let mut edges = self.edges.clone();
+        edges.sort_unstable_by_key(|e| (e.from.to_bytes(), e.to.to_bytes()));
+        
+        for edge in &edges {
+            edge.from.to_bytes().hash(&mut hasher);
+            edge.to.to_bytes().hash(&mut hasher);
+        }
+        
+        hasher.finish()
     }
 
     /// Get source stage name (assumes single source)
@@ -293,6 +313,7 @@ pub struct TopologyMetrics {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::builder::TopologyBuilder;
 
     #[test]
@@ -338,7 +359,7 @@ mod tests {
         use crate::topology::DirectedEdge;
         use crate::stages::{StageInfo, StageId};
 
-        let stage_id = StageId::new();
+        let stage_id = crate::test_ids::next_stage_id();
         let stage = StageInfo::new(stage_id, "processor");
         let stages = vec![stage.clone()];
         
@@ -361,8 +382,8 @@ mod tests {
         use crate::topology::DirectedEdge;
         use crate::stages::{StageInfo, StageId};
 
-        let validator_id = StageId::new();
-        let fixer_id = StageId::new();
+        let validator_id = crate::test_ids::next_stage_id();
+        let fixer_id = crate::test_ids::next_stage_id();
         let validator = StageInfo::new(validator_id, "validator");
         let fixer = StageInfo::new(fixer_id, "fixer");
         let stages = vec![validator.clone(), fixer.clone()];
@@ -393,10 +414,10 @@ mod tests {
         // Create a more complex topology: A -> B -> C -> D
         //                                  ^         |
         //                                  +---------+
-        let a_id = StageId::new();
-        let b_id = StageId::new();
-        let c_id = StageId::new();
-        let d_id = StageId::new();
+        let a_id = crate::test_ids::next_stage_id();
+        let b_id = crate::test_ids::next_stage_id();
+        let c_id = crate::test_ids::next_stage_id();
+        let d_id = crate::test_ids::next_stage_id();
         
         let a = StageInfo::new(a_id, "a");
         let b = StageInfo::new(b_id, "b");

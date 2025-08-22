@@ -9,7 +9,14 @@ pub mod stages;
 pub mod topology;
 pub mod types;
 pub mod validation;
-pub mod ulid;
+
+// Test utilities - internal only, not exposed in public API
+#[cfg_attr(not(test), allow(dead_code))] // silence warnings in non-test builds
+pub(crate) mod test_ids;
+
+// Re-export for unit tests only
+#[cfg(test)]
+pub use test_ids::next_stage_id;
 
 // Re-export core types for convenience
 pub use types::{StageId, StageType, SimpleStageType};
