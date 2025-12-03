@@ -59,9 +59,26 @@ impl TopologyBuilder {
     }
 
 
-    /// Add an explicit edge between stages
+    /// Add an explicit forward edge between stages
     pub fn add_edge(&mut self, from: StageId, to: StageId) {
-        self.edges.push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Forward));
+        self.edges
+            .push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Forward));
+    }
+
+    /// Add an explicit edge with a specific kind (Forward or Backward)
+    pub fn add_edge_with_kind(
+        &mut self,
+        from: StageId,
+        to: StageId,
+        kind: crate::topology::EdgeKind,
+    ) {
+        self.edges.push(DirectedEdge::new(from, to, kind));
+    }
+
+    /// Add an explicit backward edge between stages (for backflow/retry patterns)
+    pub fn add_backward_edge(&mut self, from: StageId, to: StageId) {
+        self.edges
+            .push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Backward));
     }
 
     /// Set the current stage (for chaining)

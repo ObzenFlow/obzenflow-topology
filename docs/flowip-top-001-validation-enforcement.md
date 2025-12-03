@@ -384,19 +384,22 @@ This replaces “purely disconnected” checks with a stricter notion of “not 
 
 **File:** `src/topology/topology.rs`
 
-After building `stage_map`, `downstream`, and `upstream`:
+After building `stage_map`, `downstream`, and computing SCCs, `Topology::new` delegates to the `ValidationLevel` API to keep validation paths consistent:
 
 ```rust
-// 1. Semantic connection validation
-for edge in &edges {
-    let from = stage_map.get(&edge.from).expect("validated above");
-    let to = stage_map.get(&edge.to).expect("validated above");
-    crate::validation::validate_connection_semantics(from, to, edge.kind)?;
-}
+impl Topology {
+    pub fn new(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> Result<Self, TopologyError> {
+        // Build maps, adjacency, SCCs + structural checks
+        let topo = Self::new_unvalidated(stages, edges)?;
 
-// 2. Structural constraints
-crate::validation::validate_topology_structure(&stage_map, &downstream, &upstream)?;
+        // Then run semantic + structural invariants
+        topo.validate_with_level(ValidationLevel::Full)?;
+        Ok(topo)
+    }
+}
 ```
+
+`ValidationLevel::Semantic` runs structural + per‑edge connection semantics (`validate_all_connections`), and `ValidationLevel::Full` adds global structural invariants (`validate_topology_structure`, which only needs `(stages, downstream)` for reachability).
 
 Self‑cycle checks and SCC computation remain as they are; this phase only layers additional semantics on top.
 
@@ -412,28 +415,30 @@ pub enum TopologyError {
     // existing variants...
 
     #[error(
-        "Invalid connection: Cannot connect {from_type} '{from_name}' to \
-         {to_type} '{to_name}' via {operator} operator. {reason}"
+        "Invalid connection: Cannot connect {from_type} '{from_name}' ({from_role}) to \
+         {to_type} '{to_name}' ({to_role}) via {operator} operator. {reason}"
     )]
     InvalidConnection {
         from: StageId,
         from_name: String,
         from_type: StageType,
+        from_role: StageRole,
         to: StageId,
         to_name: String,
         to_type: StageType,
+        to_role: StageRole,
         operator: String,
         reason: String,
     },
 
-    #[error("Topology must have at least one source stage")]
+    #[error("Topology must have at least one source (Producer) stage")]
     NoSources,
 
-    #[error("Topology must have at least one sink stage")]
+    #[error("Topology must have at least one sink (Consumer) stage")]
     NoSinks,
 
     #[error(
-        "Stages unreachable from any source: {}",
+        "Stages unreachable from any Producer: {}",
         stages.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
     )]
     UnreachableStages {
@@ -441,7 +446,7 @@ pub enum TopologyError {
     },
 
     #[error(
-        "Stages that cannot reach any sink: {}",
+        "Stages that cannot reach any Consumer: {}",
         stages.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
     )]
     UnproductiveStages {
@@ -540,19 +545,24 @@ impl Topology {
     /// Construction with structural validation only.
     ///
     /// "Unvalidated" means: not semantically or reachability validated.
-    /// Structural invariants (valid endpoints, no duplicates, no self-cycles) still hold.
+    /// Structural invariants (valid endpoints, no duplicates, no self-cycles, no disconnected)
+    /// are enforced internally and may return TopologyError.
     ///
     /// Implementation note: this constructor runs structural checks internally
     /// (equivalent to ValidationLevel::Structural); callers can rely on basic
     /// graph consistency but must not assume semantic correctness.
-    pub fn new_unvalidated(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> Self {
+    pub fn new_unvalidated(
+        stages: Vec<StageInfo>,
+        edges: Vec<DirectedEdge>,
+    ) -> Result<Self, TopologyError> {
         // build stage_map, downstream, upstream, stages_in_cycles
         // enforce structural invariants (endpoints, duplicates, self-cycles)
+        // returns Err on structural violations
     }
 
     /// Convenience constructor that applies full validation by default.
     pub fn new(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> Result<Self, TopologyError> {
-        let topo = Self::new_unvalidated(stages, edges);
+        let topo = Self::new_unvalidated(stages, edges)?;
         topo.validate_with_level(ValidationLevel::Full)?;
         Ok(topo)
     }
@@ -680,27 +690,27 @@ pub struct StageExtensions {
 
 ```rust
 /// Extension point for edge metadata
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EdgeExtensions {
     /// Contract configuration between stages
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contract: Option<serde_json::Value>,
 
     /// UI-specific hints (edge styling, animation parameters)
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_hints: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+/// Directed edge - explicit flow direction between stages
+///
+/// Note: Extensions are not stored on the edge itself to preserve `Hash` and `Eq`
+/// traits for use in deduplication. Use a separate `HashMap<(StageId, StageId), EdgeExtensions>`
+/// if edge-level metadata is needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DirectedEdge {
     pub from: StageId,
     pub to: StageId,
     pub kind: EdgeKind,
-
-    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
-    pub extensions: Option<EdgeExtensions>,
 }
 ```
 
@@ -743,6 +753,7 @@ The 0.1.0 release implements only the behavior described under **Current Impleme
   - Implementation: **Done.**
     - `add_stage_with_id` signature is `(StageId, Option<String>, StageType)`.
     - The convenience `add_stage` used in tests generates an ID and defaults to `StageType::Transform`.
+    - Builder helpers `add_edge`, `add_edge_with_kind`, and `add_backward_edge` provide ergonomic construction of forward and backward edges without manually instantiating `DirectedEdge`.
 
 - **EdgeKind on DirectedEdge**
   - Design: introduce `EdgeKind` and add `kind: EdgeKind` to `DirectedEdge` so the graph preserves `|>` vs `<|`.
@@ -790,9 +801,10 @@ The 0.1.0 release implements only the behavior described under **Current Impleme
 
 - **Extension points**
   - Design: `StageExtensions` and `EdgeExtensions` structs with optional fields for middleware, contracts, and UI hints.
-  - Implementation: **Done.**
-    - `StageInfo` has optional `StageExtensions` and `DirectedEdge` has optional `EdgeExtensions`, both using `serde_json::Value` for flexible metadata.
-    - `StageMetadata` remains for now as a legacy metadata type; new code should prefer `StageInfo` + `StageExtensions`.
+  - Implementation: **Partial.**
+    - `StageInfo` has optional `StageExtensions` using `serde_json::Value` for flexible metadata.
+    - `EdgeExtensions` struct is defined and exported, but not wired to `DirectedEdge` to preserve `Hash` and `Eq` traits required for edge deduplication. Use a separate `HashMap<(StageId, StageId), EdgeExtensions>` if edge-level metadata is needed.
+    - `StageMetadata` is now `#[deprecated]` with guidance to use `StageInfo` + `StageExtensions`.
 
 ## Relation to Phase 2 (Runtime / DSL)
 

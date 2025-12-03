@@ -34,7 +34,7 @@ impl StageInfo {
     pub fn auto_named(id: StageId, stage_type: StageType) -> Self {
         Self {
             id,
-            name: format!("stage_{}", id),
+            name: format!("stage_{id}"),
             stage_type,
             extensions: None,
         }
@@ -60,7 +60,8 @@ pub struct StageExtensions {
     pub ui_hints: Option<serde_json::Value>,
 }
 
-/// Legacy metadata type - prefer StageInfo + StageExtensions for new code
+/// Legacy metadata type - use StageInfo + StageExtensions instead
+#[deprecated(since = "0.2.0", note = "Use StageInfo with optional StageExtensions instead")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageMetadata {
     pub id: StageId,

@@ -194,32 +194,36 @@ impl Topology {
         "multi_source_flow".to_string()
     }
 
-    /// Get topology fingerprint - deterministic hash of structure
-    /// Same topology structure always produces same fingerprint
+    /// Get topology fingerprint - deterministic hash of structure and semantics
+    ///
+    /// Includes: stage IDs, names, types, edge endpoints, and edge kinds.
+    /// Same topology always produces same fingerprint.
     pub fn topology_fingerprint(&self) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
-        
+
         // 1) Canonicalize stages (sort by ULID bytes for determinism)
         let mut stages: Vec<_> = self.stages.iter().collect();
         stages.sort_unstable_by_key(|(id, _)| id.to_bytes());
-        
+
         for (id, info) in stages {
             id.to_bytes().hash(&mut hasher);
             info.name.hash(&mut hasher);
+            info.stage_type.as_str().hash(&mut hasher);
         }
-        
+
         // 2) Canonicalize edges (sort for determinism)
         let mut edges = self.edges.clone();
         edges.sort_unstable_by_key(|e| (e.from.to_bytes(), e.to.to_bytes()));
-        
+
         for edge in &edges {
             edge.from.to_bytes().hash(&mut hasher);
             edge.to.to_bytes().hash(&mut hasher);
+            std::mem::discriminant(&edge.kind).hash(&mut hasher);
         }
-        
+
         hasher.finish()
     }
 

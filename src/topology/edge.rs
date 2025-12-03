@@ -20,25 +20,22 @@ impl std::fmt::Display for EdgeKind {
 }
 
 /// Extension point for edge metadata
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EdgeExtensions {
     /// Contract configuration between stages
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contract: Option<serde_json::Value>,
 
     /// UI-specific hints (edge styling, animation parameters)
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_hints: Option<serde_json::Value>,
 }
 
 /// Directed edge - explicit flow direction between stages
+///
+/// Note: Extensions are not stored on the edge itself to preserve `Hash` and `Eq`
+/// traits for use in deduplication. Use a separate `HashMap<(StageId, StageId), EdgeExtensions>`
+/// if edge-level metadata is needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DirectedEdge {
     pub from: StageId,

@@ -326,7 +326,7 @@ pub fn validate_topology_structure(
 
     // Reachability to any Consumer
     let mut reachable_to_sinks: HashMap<StageId, bool> = HashMap::new();
-    for (id, _) in stages {
+    for id in stages.keys() {
         let mut seen = HashSet::new();
         let mut stack = Vec::new();
         stack.push(*id);
@@ -762,11 +762,12 @@ mod tests {
     #[test]
     fn test_compute_sccs_multiple_components() {
         let mut stages = HashMap::new();
-        let s1 = StageId::from_bytes(1u128.to_be_bytes());
-        let s2 = StageId::from_bytes(2u128.to_be_bytes());
-        let s3 = StageId::from_bytes(3u128.to_be_bytes());
-        let s4 = crate::test_ids::next_stage_id();
-        let s5 = crate::test_ids::next_stage_id();
+        // Use unique IDs in range 100+ to avoid collisions with other tests using next_stage_id()
+        let s1 = StageId::from_bytes(101u128.to_be_bytes());
+        let s2 = StageId::from_bytes(102u128.to_be_bytes());
+        let s3 = StageId::from_bytes(103u128.to_be_bytes());
+        let s4 = StageId::from_bytes(104u128.to_be_bytes());
+        let s5 = StageId::from_bytes(105u128.to_be_bytes());
         
         stages.insert(s1, ());
         stages.insert(s2, ());
