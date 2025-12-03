@@ -1,8 +1,6 @@
 use obzenflow_topology::builder::TopologyBuilder;
 use obzenflow_topology::validation::TopologyError;
 
-mod common;
-
 #[test]
 fn test_valid_topology_creation() {
     let mut builder = TopologyBuilder::new();

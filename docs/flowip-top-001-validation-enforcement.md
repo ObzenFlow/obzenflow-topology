@@ -563,7 +563,7 @@ The builder mirrors this:
 
 ```rust
 impl TopologyBuilder {
-    pub fn build_unchecked(self) -> Topology {
+    pub fn build_unchecked(self) -> Result<Topology, TopologyError> {
         Topology::new_unvalidated(self.stages, self.edges)
     }
 
@@ -573,9 +573,26 @@ impl TopologyBuilder {
 }
 ```
 
-This allows UI workflows to construct intermediate, invalid graphs (via `build_unchecked`) and validate on demand, while production code continues to call `build()` and get fully validated topologies.
+This allows UI workflows to construct graphs with structural validation only (via `build_unchecked`) and apply semantic validation on demand, while production code continues to call `build()` and get fully validated topologies. Note that `build_unchecked` still enforces structural invariants (valid endpoints, no duplicates, no self-cycles, no disconnected stages) — it only skips semantic validation (StageRole connection rules) and reachability checks (NoSources, NoSinks, UnreachableStages, UnproductiveStages).
 
-### 10. Cycle Detection and Fingerprints
+### 10. Verification: Tests Exercising Phase 1 Semantics
+
+The 0.2.0 codebase includes a dedicated semantic validation test suite in `tests/topology_semantic_validation.rs` alongside existing structural tests:
+
+- Structural tests (`tests/topology_edge_cases.rs`, `tests/topology_validation_tests.rs`):
+  - Use `TopologyBuilder::build_unchecked()` to exercise structural behavior only (empty topologies, cycles allowed, duplicates, disconnected stages, metrics, naming).
+  - Confirm that structural invariants behave as designed without StageType/StageRole semantics.
+- Semantic tests (`tests/topology_semantic_validation.rs`):
+  - Use `Topology::new(...)` (full validation) to assert:
+    - Valid topologies such as `FiniteSource -> Transform -> Sink` pass and are correctly classified by `semantic_source_stages()` / `semantic_sink_stages()`.
+    - Invalid connections (e.g., `Sink |> Source`) produce `TopologyError::InvalidConnection` with the expected operator, names, and roles.
+    - Topologies with no Producers / no Consumers produce `NoSources` / `NoSinks`.
+    - Topologies with unreachable stages produce `UnreachableStages`.
+    - Topologies with stages that cannot reach any Consumer produce `UnproductiveStages`.
+
+The full `cargo test` suite passes, confirming that both structural and semantic aspects of the Phase 1 design are implemented and covered by tests in 0.2.0.
+
+### 11. Cycle Detection and Fingerprints
 
 **Files:** `src/validation/validation.rs`, `src/topology/topology.rs`
 
@@ -590,7 +607,7 @@ To keep topology fingerprints aligned with semantics:
   - `from`, `to`, and `kind: EdgeKind` for each edge.
 - Optionally, a separate `structural_fingerprint()` can be introduced that hashes only IDs/names/edges, matching the 0.1 behavior when callers want to ignore semantics.
 
-### 11. Shape vs StageType vs StageRole: Three Orthogonal Concepts
+### 12. Shape vs StageType vs StageRole: Three Orthogonal Concepts
 
 The cross-codebase review revealed that three concepts are often conflated but are actually **orthogonal**:
 
@@ -623,7 +640,7 @@ This means a `StageType::Join` has `Merge`-like Shape (2 inputs) but fundamental
 
 The topology crate exports all three, allowing consumers to use the appropriate abstraction for their needs.
 
-### 12. Extension Points for Future Metadata
+### 13. Extension Points for Future Metadata
 
 To support future UI features (middleware configuration display, contract visualization), `StageInfo` and `DirectedEdge` should be extensible without breaking changes:
 
@@ -747,12 +764,19 @@ The 0.1.0 release implements only the behavior described under **Current Impleme
       - at least one Producer and one Consumer,
       - every stage reachable from some Producer,
       - every stage can reach some Consumer.
+    - Note: `validate_topology_structure` takes only `(stages, downstream)` — the `upstream` map is not needed for reachability checks since both "reachable from sources" and "can reach sinks" traverse downstream edges.
 
 - **Topology::new wiring**
   - Design: call `validate_connection_semantics` and structural validators from `Topology::new` after building adjacency lists.
   - Implementation: **Done.**
     - `Topology::new_unvalidated` builds maps/adjacency and runs structural checks.
     - `Topology::new` calls `new_unvalidated` and then `validate_with_level(ValidationLevel::Full)`, which runs semantic + structural invariants.
+
+- **TopologyBuilder::build_unchecked**
+  - Design: provide a builder method for structural-only validation to support UI workflows.
+  - Implementation: **Done.**
+    - `build_unchecked()` returns `Result<Topology, TopologyError>` with structural validation only.
+    - `build()` continues to apply full validation (structural + semantic + reachability).
 
 - **Semantic vs structural source/sink queries**
   - Design: keep existing structural `source_stages()` / `sink_stages()`, and add semantic `semantic_source_stages()` / `semantic_sink_stages()` based on `StageRole`.
