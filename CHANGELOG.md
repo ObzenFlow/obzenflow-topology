@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - TBA
+
+### Breaking
+- Reserve 0.2.x line for StageType/EdgeKind-aware validation and structural topology enforcement (FLOWIP-TOP-001).
+- Planned changes include adding `StageType` to `StageInfo`, introducing `EdgeKind` on `DirectedEdge`, and wiring semantic/structural validation into `Topology::new`.
+
 ## [0.1.0] - 2025-01-14
 
 ### Added
