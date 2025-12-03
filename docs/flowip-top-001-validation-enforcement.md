@@ -4,7 +4,8 @@
 
 This document describes the intended **Phase 1** of topology validation/enforcement work for the shared `obzenflow-topology` crate.
 
-As of released `obzenflow-topology` **0.1.0** (see `CHANGELOG.md`), the crate implements the structural behavior described in **Current Implementation** below. The StageType/EdgeKind‑aware validation described in **Phase 1 Design** is planned for the **0.2.x** line and is **not yet wired into the code**.
+- The published `obzenflow-topology` **0.1.0** release implements the structural behavior described in **Current Implementation** below.
+- The unreleased **0.2.0 (main branch)** implements most of the Phase 1 design for StageType/StageRole + EdgeKind semantics and the new validation API. See “Implementation Status vs Design” for details on what is done vs pending.
 
 Goal:
 - Enrich the core `Topology` model so it can reject semantically invalid graphs (e.g. `sink |> source`) while still allowing the backflow/cycle patterns introduced in FLOWIP‑082.
@@ -696,48 +697,78 @@ Using `serde_json::Value` keeps the topology crate decoupled from specific middl
 
 The recommended approach is to migrate consumers to `StageInfo` and use `StageExtensions` for optional metadata, deprecating `StageMetadata` over time.
 
-## Implementation Status vs Design (as of 0.1.0)
+## Implementation Status vs Design
+
+This section tracks how far the Phase 1 design has been implemented.
+
+### 0.1.0 (published crate)
+
+The 0.1.0 release implements only the behavior described under **Current Implementation (pre‑Phase 1)**:
+
+- Structural validation only (endpoints, duplicates, self‑cycles, disconnected).
+- No `StageType` on `StageInfo`, no `EdgeKind`, no semantic validation, no structural invariants.
+
+### 0.2.0 (main branch, unreleased)
 
 - **StageRole (renamed from SimpleStageType)**
   - Design: Introduce `StageRole` enum with `Producer`, `Processor`, `Consumer` variants. Rename `simple()` method to `role()`.
-  - Implementation: `SimpleStageType` exists with `Source`, `Transform`, `Sink` variants and `simple()` method. Needs renaming and terminology update.
+  - Implementation: **Done.**
+    - `StageRole` exists and is used by `StageType::role()` to classify `StageType` into Producer/Processor/Consumer.
+    - `SimpleStageType` and `simple()` have been removed in favor of `StageRole` in this crate.
 
 - **StageType on StageInfo**
   - Design: `StageInfo` gains a `stage_type: StageType` field and constructors accept a `StageType`.
-  - Implementation: `StageInfo` is currently `{ id, name }`. `StageType` lives only on `StageMetadata`.
+  - Implementation: **Done.**
+    - `StageInfo` is now `{ id, name, stage_type, extensions: Option<StageExtensions> }`, and all callers construct it with an explicit `StageType`.
 
 - **TopologyBuilder: stage‑type aware**
   - Design: `TopologyBuilder::add_stage_with_id` takes a `StageType` and constructs a full `StageInfo`.
-  - Implementation: `add_stage_with_id` only accepts `(StageId, Option<String>)`. No `StageType` is passed, and `StageMetadata` is not used.
+  - Implementation: **Done.**
+    - `add_stage_with_id` signature is `(StageId, Option<String>, StageType)`.
+    - The convenience `add_stage` used in tests generates an ID and defaults to `StageType::Transform`.
 
 - **EdgeKind on DirectedEdge**
   - Design: introduce `EdgeKind` and add `kind: EdgeKind` to `DirectedEdge` so the graph preserves `|>` vs `<|`.
-  - Implementation: `DirectedEdge` is `{ from, to }` only; there is no `EdgeKind` or `kind` field.
+  - Implementation: **Done.**
+    - `EdgeKind` exists with `Forward` and `Backward` variants, serde derives, and `Display`.
+    - `DirectedEdge` now has `{ from, to, kind }` with serde derives and a `new(from, to, kind)` constructor.
 
 - **Connection semantics (`validate_connection_semantics`)**
   - Design: per‑edge validation based on `(StageRole, EdgeKind)` plus a `TopologyError::InvalidConnection` variant.
-  - Implementation: `TopologyError` only contains `InvalidEdge`, `DuplicateEdge`, `CycleDetected`, `DisconnectedStages`, and `SelfCycle`. No role‑aware connection checks are performed.
+  - Implementation: **Done.**
+    - `TopologyError::InvalidConnection` is implemented with full context (names, types, roles, operator, reason).
+    - `validate_connection_semantics` enforces the StageRole + EdgeKind matrix described earlier.
 
 - **Structural topology constraints**
-  - Design: enforce `NoSources`, `NoSinks`, `UnreachableStages`, and `UnproductiveStages` based on StageType.
-  - Implementation: there are no such error variants. `Topology::new` only validates:
-    - edges reference known stages,
-    - no duplicate edges,
-    - no self‑cycles,
-    - no disconnected stages (using `find_disconnected_stages`),
-    - and computes SCCs for cycle introspection (`stages_in_cycles`).
+  - Design: enforce `NoSources`, `NoSinks`, `UnreachableStages`, and `UnproductiveStages` based on StageType/StageRole.
+  - Implementation: **Done.**
+    - `TopologyError` includes `NoSources`, `NoSinks`, `UnreachableStages`, `UnproductiveStages`.
+    - `validate_topology_structure` enforces:
+      - at least one Producer and one Consumer,
+      - every stage reachable from some Producer,
+      - every stage can reach some Consumer.
 
 - **Topology::new wiring**
-  - Design: call `validate_connection_semantics` and a structural validator from `Topology::new` after building adjacency lists.
-  - Implementation: `Topology::new` does not call any StageType/EdgeKind‑aware validators.
+  - Design: call `validate_connection_semantics` and structural validators from `Topology::new` after building adjacency lists.
+  - Implementation: **Done.**
+    - `Topology::new_unvalidated` builds maps/adjacency and runs structural checks.
+    - `Topology::new` calls `new_unvalidated` and then `validate_with_level(ValidationLevel::Full)`, which runs semantic + structural invariants.
+
+- **Semantic vs structural source/sink queries**
+  - Design: keep existing structural `source_stages()` / `sink_stages()`, and add semantic `semantic_source_stages()` / `semantic_sink_stages()` based on `StageRole`.
+  - Implementation: **Done.**
+    - `Topology` includes both structural and semantic getters; semantic getters use `StageType::role()` to identify Producers/Consumers.
 
 - **Join coverage**
   - Design: align `StageType` in this crate with `obzenflow_core::event::context::StageType`, including a `Join` variant that maps to `StageRole::Processor` (can consume and produce events).
-  - Implementation: `StageType` in this crate currently includes `FiniteSource`, `InfiniteSource`, `Transform`, `Sink`, and `Stateful` only; join stages exist at the runtime layer (`flowstate_rs`) but are not yet represented explicitly in `obzenflow-topology`.
+  - Implementation: **Done.**
+    - `StageType` now includes `Join` and `StageType::role()` maps Transform/Stateful/Join to `StageRole::Processor`.
 
 - **Extension points**
   - Design: `StageExtensions` and `EdgeExtensions` structs with optional fields for middleware, contracts, and UI hints.
-  - Implementation: No extension fields exist. `StageInfo` is minimal `{ id, name }` and `DirectedEdge` is `{ from, to }`.
+  - Implementation: **Done.**
+    - `StageInfo` has optional `StageExtensions` and `DirectedEdge` has optional `EdgeExtensions`, both using `serde_json::Value` for flexible metadata.
+    - `StageMetadata` remains for now as a legacy metadata type; new code should prefer `StageInfo` + `StageExtensions`.
 
 ## Relation to Phase 2 (Runtime / DSL)
 
