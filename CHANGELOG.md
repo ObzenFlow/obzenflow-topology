@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection semantics validation enforces valid `(StageRole, EdgeKind)` combinations
 - Structural invariants ensure at least one Producer and Consumer, and all stages on a source→sink path
 
-## [0.1.0] - 2025-01-14
+## [0.1.0] - 2025-08-14
 
 ### Added
 - Initial release of obzenflow-topology as a standalone crate
