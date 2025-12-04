@@ -21,17 +21,22 @@ impl TopologyBuilder {
 
     /// Production API: Add a stage with an explicit StageId
     /// Use this when you have IDs from the application layer
-    pub fn add_stage_with_id(&mut self, id: StageId, name: Option<String>) -> StageId {
+    pub fn add_stage_with_id(
+        &mut self,
+        id: StageId,
+        name: Option<String>,
+        stage_type: crate::types::StageType,
+    ) -> StageId {
         let info = match name {
-            Some(n) => StageInfo::new(id, n),
-            None => StageInfo::auto_named(id),
+            Some(n) => StageInfo::new(id, n, stage_type),
+            None => StageInfo::auto_named(id, stage_type),
         };
 
         self.stages.push(info);
 
         // If there's a current stage, create an edge from it to this new stage
         if let Some(from) = self.current_stage {
-            self.edges.push(DirectedEdge::new(from, id));
+        self.edges.push(DirectedEdge::new(from, id, crate::topology::EdgeKind::Forward));
         }
 
         self.current_stage = Some(id);
@@ -49,13 +54,31 @@ impl TopologyBuilder {
         *counter += 1;
         
         let id = StageId::from_bytes((*counter).to_be_bytes());
-        self.add_stage_with_id(id, name)
+        // Default to a generic transform stage type for test-only APIs
+        self.add_stage_with_id(id, name, crate::types::StageType::Transform)
     }
 
 
-    /// Add an explicit edge between stages
+    /// Add an explicit forward edge between stages
     pub fn add_edge(&mut self, from: StageId, to: StageId) {
-        self.edges.push(DirectedEdge::new(from, to));
+        self.edges
+            .push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Forward));
+    }
+
+    /// Add an explicit edge with a specific kind (Forward or Backward)
+    pub fn add_edge_with_kind(
+        &mut self,
+        from: StageId,
+        to: StageId,
+        kind: crate::topology::EdgeKind,
+    ) {
+        self.edges.push(DirectedEdge::new(from, to, kind));
+    }
+
+    /// Add an explicit backward edge between stages (for backflow/retry patterns)
+    pub fn add_backward_edge(&mut self, from: StageId, to: StageId) {
+        self.edges
+            .push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Backward));
     }
 
     /// Set the current stage (for chaining)
@@ -68,9 +91,17 @@ impl TopologyBuilder {
         self.current_stage = None;
     }
 
-    /// Build the topology
+    /// Build the topology with full validation (structural + semantic + reachability)
     pub fn build(self) -> Result<Topology, TopologyError> {
         Topology::new(self.stages, self.edges)
+    }
+
+    /// Build the topology with structural validation only (no semantic checks)
+    ///
+    /// Use this for UI workflows that need to construct intermediate, invalid graphs
+    /// and validate on demand.
+    pub fn build_unchecked(self) -> Result<Topology, TopologyError> {
+        Topology::new_unvalidated(self.stages, self.edges)
     }
 }
 
@@ -94,7 +125,8 @@ mod tests {
         let s2 = builder.add_stage(Some("stage2".to_string()));
         let s3 = builder.add_stage(Some("stage3".to_string()));
 
-        let topology = builder.build().unwrap();
+        // Use build_unchecked since we're testing structural chaining, not semantic validation
+        let topology = builder.build_unchecked().unwrap();
 
         // Verify chain: s1 -> s2 -> s3
         assert_eq!(topology.downstream_stages(s1), &[s2]);
@@ -119,7 +151,8 @@ mod tests {
         builder.add_edge(source1, merger);
         builder.add_edge(source2, merger);
 
-        let topology = builder.build().unwrap();
+        // Use build_unchecked since we're testing structural fan-in, not semantic validation
+        let topology = builder.build_unchecked().unwrap();
 
         // Verify fan-in
         let upstream = topology.upstream_stages(merger);

@@ -1,6 +1,5 @@
 // Test-only utilities for deterministic ID generation
 // This module is always compiled but only used in tests to avoid cfg complexity
-#![allow(dead_code)]
 
 use once_cell::sync::Lazy;
 use std::sync::Mutex;

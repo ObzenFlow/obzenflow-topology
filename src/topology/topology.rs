@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use crate::stages::{StageId, StageInfo};
 use crate::topology::DirectedEdge;
-use crate::validation::{TopologyError, compute_sccs};
+use crate::validation::{TopologyError, ValidationResult, compute_sccs, validate_edges_and_structure, validate_all_connections, validate_topology_structure};
+use crate::types::StageRole;
 
 /// Complete topology with efficient traversal
 /// 
@@ -21,68 +22,36 @@ pub struct Topology {
     stages_in_cycles: HashSet<StageId>,
 }
 
+/// Validation level for topology semantics
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValidationLevel {
+    /// Structural only: endpoints, duplicates, self-cycles, disconnected, SCCs
+    Structural,
+    /// Structural + StageType/StageRole + EdgeKind connection semantics
+    Semantic,
+    /// Semantic + structural invariants (NoSources, NoSinks, UnreachableStages, UnproductiveStages)
+    Full,
+}
+
 impl Topology {
-    /// Construct and validate topology (enforces acyclic constraint for backward compatibility)
-    pub fn new(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> Result<Self, TopologyError> {
-        let stage_map: HashMap<StageId, StageInfo> = stages
-            .into_iter()
-            .map(|s| (s.id, s))
-            .collect();
+    /// Construct topology with structural validation only.
+    ///
+    /// "Unvalidated" means: not semantically or reachability validated.
+    /// Structural invariants (valid endpoints, no duplicates, no self-cycles, no disconnected components)
+    /// still hold so core APIs can rely on consistent graph structure.
+    pub fn new_unvalidated(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> ValidationResult<Self> {
+        let stage_map: HashMap<StageId, StageInfo> = stages.into_iter().map(|s| (s.id, s)).collect();
+
+        // Run structural validation on edges
+        validate_edges_and_structure(&stage_map, &edges)?;
 
         // Build adjacency lists for efficient traversal
         let mut downstream: HashMap<StageId, HashSet<StageId>> = HashMap::new();
         let mut upstream: HashMap<StageId, HashSet<StageId>> = HashMap::new();
 
         for edge in &edges {
-            // Validate edge references valid stages
-            if !stage_map.contains_key(&edge.from) {
-                return Err(TopologyError::InvalidEdge {
-                    from: edge.from,
-                    to: edge.to,
-                    reason: format!("Source stage {} not found", edge.from),
-                });
-            }
-            if !stage_map.contains_key(&edge.to) {
-                return Err(TopologyError::InvalidEdge {
-                    from: edge.from,
-                    to: edge.to,
-                    reason: format!("Target stage {} not found", edge.to),
-                });
-            }
-
-            // Check for duplicate edges
-            if let Some(existing) = downstream.get(&edge.from) {
-                if existing.contains(&edge.to) {
-                    return Err(TopologyError::DuplicateEdge {
-                        from: edge.from,
-                        to: edge.to,
-                    });
-                }
-            }
-
             downstream.entry(edge.from).or_default().insert(edge.to);
             upstream.entry(edge.to).or_default().insert(edge.from);
-        }
-
-        // Note: As of FLOWIP-082, we no longer enforce acyclic constraints
-        // Cycles are now allowed in topologies to support feedback loops,
-        // retry patterns, and iterative processing
-        
-        // However, self-cycles (stage -> stage) are forbidden
-        for edge in &edges {
-            if edge.from == edge.to {
-                let stage_name = stage_map.get(&edge.from)
-                    .map(|s| s.name.clone())
-                    .unwrap_or_else(|| edge.from.to_string());
-                return Err(TopologyError::SelfCycle { 
-                    stage: stage_name 
-                });
-            }
-        }
-        
-        // Detect disconnected components
-        if let Some(disconnected) = crate::validation::find_disconnected_stages(&stage_map, &downstream, &upstream) {
-            return Err(TopologyError::DisconnectedStages { stages: disconnected });
         }
 
         // Compute SCCs for cycle detection (FLOWIP-082g)
@@ -94,7 +63,7 @@ impl Topology {
                 stages_in_cycles.extend(scc.iter().copied());
             }
         }
-        
+
         Ok(Self {
             stages: stage_map,
             edges,
@@ -102,6 +71,36 @@ impl Topology {
             upstream,
             stages_in_cycles,
         })
+    }
+
+    /// Construct and fully validate topology (structural + semantic + structural invariants).
+    pub fn new(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> Result<Self, TopologyError> {
+        let topo = Self::new_unvalidated(stages, edges)?;
+        topo.validate_with_level(ValidationLevel::Full)?;
+        Ok(topo)
+    }
+
+    /// Validate this topology at the requested level.
+    pub fn validate_with_level(&self, level: ValidationLevel) -> Result<(), TopologyError> {
+        match level {
+            ValidationLevel::Structural => {
+                // Reuse existing structure for validation
+                validate_edges_and_structure(&self.stages, &self.edges)
+            }
+            ValidationLevel::Semantic => {
+                validate_edges_and_structure(&self.stages, &self.edges)?;
+                validate_all_connections(&self.stages, &self.edges)
+            }
+            ValidationLevel::Full => {
+                self.validate_with_level(ValidationLevel::Semantic)?;
+                validate_topology_structure(&self.stages, &self.downstream)
+            }
+        }
+    }
+
+    /// Convenience method: run full semantic validation.
+    pub fn validate_semantics(&self) -> Result<(), TopologyError> {
+        self.validate_with_level(ValidationLevel::Full)
     }
 
     /// Get stages that flow INTO this stage
@@ -166,6 +165,24 @@ impl Topology {
             .collect()
     }
 
+    /// Semantic source stages (Producer role based on StageType)
+    pub fn semantic_source_stages(&self) -> Vec<StageId> {
+        self.stages
+            .iter()
+            .filter(|(_, info)| matches!(info.stage_type.role(), StageRole::Producer))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Semantic sink stages (Consumer role based on StageType)
+    pub fn semantic_sink_stages(&self) -> Vec<StageId> {
+        self.stages
+            .iter()
+            .filter(|(_, info)| matches!(info.stage_type.role(), StageRole::Consumer))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     /// Get flow name (derived from source stage if single source)
     pub fn flow_name(&self) -> String {
         let sources = self.source_stages();
@@ -177,32 +194,36 @@ impl Topology {
         "multi_source_flow".to_string()
     }
 
-    /// Get topology fingerprint - deterministic hash of structure
-    /// Same topology structure always produces same fingerprint
+    /// Get topology fingerprint - deterministic hash of structure and semantics
+    ///
+    /// Includes: stage IDs, names, types, edge endpoints, and edge kinds.
+    /// Same topology always produces same fingerprint.
     pub fn topology_fingerprint(&self) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
-        
+
         // 1) Canonicalize stages (sort by ULID bytes for determinism)
         let mut stages: Vec<_> = self.stages.iter().collect();
         stages.sort_unstable_by_key(|(id, _)| id.to_bytes());
-        
+
         for (id, info) in stages {
             id.to_bytes().hash(&mut hasher);
             info.name.hash(&mut hasher);
+            info.stage_type.as_str().hash(&mut hasher);
         }
-        
+
         // 2) Canonicalize edges (sort for determinism)
         let mut edges = self.edges.clone();
         edges.sort_unstable_by_key(|e| (e.from.to_bytes(), e.to.to_bytes()));
-        
+
         for edge in &edges {
             edge.from.to_bytes().hash(&mut hasher);
             edge.to.to_bytes().hash(&mut hasher);
+            std::mem::discriminant(&edge.kind).hash(&mut hasher);
         }
-        
+
         hasher.finish()
     }
 
@@ -313,7 +334,6 @@ pub struct TopologyMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::builder::TopologyBuilder;
 
     #[test]
@@ -323,7 +343,8 @@ mod tests {
         let transform = builder.add_stage(Some("transform".to_string()));
         let sink = builder.add_stage(Some("sink".to_string()));
 
-        let topology = builder.build().unwrap();
+        // Use build_unchecked since we're testing structural traversal, not semantic validation
+        let topology = builder.build_unchecked().unwrap();
 
         assert_eq!(topology.num_stages(), 3);
         assert_eq!(topology.upstream_stages(transform), &[source]);
@@ -346,7 +367,8 @@ mod tests {
         builder.add_edge(source, transform1);
         builder.add_edge(source, transform2);
 
-        let topology = builder.build().unwrap();
+        // Use build_unchecked since we're testing structural fan-out, not semantic validation
+        let topology = builder.build_unchecked().unwrap();
 
         assert_eq!(topology.downstream_stages(source).len(), 2);
         assert!(topology.downstream_stages(source).contains(&transform1));
@@ -356,19 +378,21 @@ mod tests {
     #[test]
     fn test_self_cycle_rejected() {
         use crate::validation::TopologyError;
-        use crate::topology::DirectedEdge;
-        use crate::stages::{StageInfo, StageId};
+        use crate::topology::{DirectedEdge, EdgeKind};
+        use crate::stages::StageInfo;
 
         let stage_id = crate::test_ids::next_stage_id();
-        let stage = StageInfo::new(stage_id, "processor");
+        let stage =
+            StageInfo::new(stage_id, "processor", crate::types::StageType::Transform);
         let stages = vec![stage.clone()];
-        
-        // Create self-cycle edge
-        let edges = vec![DirectedEdge::new(stage.id, stage.id)];
 
-        let result = super::Topology::new(stages, edges);
+        // Create self-cycle edge
+        let edges = vec![DirectedEdge::new(stage.id, stage.id, EdgeKind::Forward)];
+
+        // Use new_unvalidated since we're testing structural self-cycle rejection
+        let result = super::Topology::new_unvalidated(stages, edges);
         assert!(result.is_err());
-        
+
         match result {
             Err(TopologyError::SelfCycle { stage: name }) => {
                 assert_eq!(name, "processor");
@@ -379,68 +403,75 @@ mod tests {
 
     #[test]
     fn test_multi_stage_cycle_allowed() {
-        use crate::topology::DirectedEdge;
-        use crate::stages::{StageInfo, StageId};
+        use crate::topology::{DirectedEdge, EdgeKind};
+        use crate::stages::StageInfo;
 
         let validator_id = crate::test_ids::next_stage_id();
         let fixer_id = crate::test_ids::next_stage_id();
-        let validator = StageInfo::new(validator_id, "validator");
-        let fixer = StageInfo::new(fixer_id, "fixer");
+        let validator = StageInfo::new(
+            validator_id,
+            "validator",
+            crate::types::StageType::Transform,
+        );
+        let fixer =
+            StageInfo::new(fixer_id, "fixer", crate::types::StageType::Transform);
         let stages = vec![validator.clone(), fixer.clone()];
-        
-        // Create a cycle between two different stages (allowed)
+
+        // Create a cycle between two different stages (allowed structurally)
         let edges = vec![
-            DirectedEdge::new(validator.id, fixer.id),
-            DirectedEdge::new(fixer.id, validator.id),
+            DirectedEdge::new(validator.id, fixer.id, EdgeKind::Forward),
+            DirectedEdge::new(fixer.id, validator.id, EdgeKind::Backward),
         ];
 
-        let result = super::Topology::new(stages, edges);
+        // Use new_unvalidated since we're testing structural cycle allowance
+        let result = super::Topology::new_unvalidated(stages, edges);
         assert!(result.is_ok());
-        
+
         let topology = result.unwrap();
         assert!(topology.has_edge(validator.id, fixer.id));
         assert!(topology.has_edge(fixer.id, validator.id));
-        
+
         // Test SCC-based cycle detection (FLOWIP-082g)
         assert!(topology.is_in_cycle(validator.id));
         assert!(topology.is_in_cycle(fixer.id));
     }
-    
+
     #[test]
     fn test_scc_cycle_detection() {
-        use crate::topology::DirectedEdge;
-        use crate::stages::{StageInfo, StageId};
+        use crate::topology::{DirectedEdge, EdgeKind};
+        use crate::stages::StageInfo;
 
         // Create a more complex topology: A -> B -> C -> D
-        //                                  ^         |
-        //                                  +---------+
+        //                                       ^         |
+        //                                       +---------+
         let a_id = crate::test_ids::next_stage_id();
         let b_id = crate::test_ids::next_stage_id();
         let c_id = crate::test_ids::next_stage_id();
         let d_id = crate::test_ids::next_stage_id();
-        
-        let a = StageInfo::new(a_id, "a");
-        let b = StageInfo::new(b_id, "b");
-        let c = StageInfo::new(c_id, "c");
-        let d = StageInfo::new(d_id, "d");
-        
+
+        let a = StageInfo::new(a_id, "a", crate::types::StageType::Transform);
+        let b = StageInfo::new(b_id, "b", crate::types::StageType::Transform);
+        let c = StageInfo::new(c_id, "c", crate::types::StageType::Transform);
+        let d = StageInfo::new(d_id, "d", crate::types::StageType::Transform);
+
         let stages = vec![a.clone(), b.clone(), c.clone(), d.clone()];
-        
+
         let edges = vec![
-            DirectedEdge::new(a.id, b.id),
-            DirectedEdge::new(b.id, c.id),
-            DirectedEdge::new(c.id, d.id),
-            DirectedEdge::new(d.id, b.id), // Creates cycle B->C->D->B
+            DirectedEdge::new(a.id, b.id, EdgeKind::Forward),
+            DirectedEdge::new(b.id, c.id, EdgeKind::Forward),
+            DirectedEdge::new(c.id, d.id, EdgeKind::Forward),
+            DirectedEdge::new(d.id, b.id, EdgeKind::Backward), // Creates cycle B->C->D->B
         ];
 
-        let result = super::Topology::new(stages, edges);
+        // Use new_unvalidated since we're testing structural SCC detection
+        let result = super::Topology::new_unvalidated(stages, edges);
         assert!(result.is_ok());
-        
+
         let topology = result.unwrap();
-        
+
         // A is not in a cycle
         assert!(!topology.is_in_cycle(a.id));
-        
+
         // B, C, D are all in the same cycle
         assert!(topology.is_in_cycle(b.id));
         assert!(topology.is_in_cycle(c.id));

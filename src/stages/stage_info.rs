@@ -2,31 +2,66 @@ use super::StageId;
 use crate::types::StageType;
 use serde::{Deserialize, Serialize};
 
-/// Stage information - combines ID with human-readable name
+/// Extensible stage information - core topology node metadata
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StageInfo {
     pub id: StageId,
-    pub name: String,  // For debugging/logging only - never used for logic!
+    /// Human-readable name (for debugging/logging/UI)
+    pub name: String,
+    /// Semantic stage type used for validation and runtime coordination
+    pub stage_type: StageType,
+
+    /// Optional extension point for additional metadata (middleware, UI hints, etc.)
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub extensions: Option<StageExtensions>,
 }
 
 impl StageInfo {
-    pub fn new(id: StageId, name: impl Into<String>) -> Self {
+    pub fn new(id: StageId, name: impl Into<String>, stage_type: StageType) -> Self {
         Self {
             id,
             name: name.into(),
+            stage_type,
+            extensions: None,
         }
     }
-    
+
     /// Create with auto-generated name
-    pub fn auto_named(id: StageId) -> Self {
+    pub fn auto_named(id: StageId, stage_type: StageType) -> Self {
         Self {
-            name: format!("stage_{}", id),
             id,
+            name: format!("stage_{id}"),
+            stage_type,
+            extensions: None,
         }
     }
 }
 
-/// Extended metadata for stages
+/// Future-proofing: extensible metadata container for stages
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct StageExtensions {
+    /// Middleware configuration (rate limiters, circuit breakers, retry policies)
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub middleware: Option<serde_json::Value>,
+
+    /// UI-specific hints (custom icons, colors, grouping)
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub ui_hints: Option<serde_json::Value>,
+}
+
+/// Legacy metadata type - use StageInfo + StageExtensions instead
+#[deprecated(since = "0.2.0", note = "Use StageInfo with optional StageExtensions instead")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageMetadata {
     pub id: StageId,

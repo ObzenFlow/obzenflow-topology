@@ -19,8 +19,8 @@ pub(crate) mod test_ids;
 pub use test_ids::next_stage_id;
 
 // Re-export core types for convenience
-pub use types::{StageId, StageType, SimpleStageType};
-pub use topology::{Topology, TopologyMetrics, DirectedEdge};
+pub use types::{StageId, StageType, StageRole};
+pub use topology::{Topology, TopologyMetrics, DirectedEdge, EdgeKind, ValidationLevel};
 pub use builder::TopologyBuilder;
 pub use validation::{TopologyError, ValidationResult};
 pub use stages::{StageInfo, StageMetadata};

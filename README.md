@@ -15,13 +15,13 @@ Flow topology graph structures for ObzenFlow - a pure Rust implementation of dir
 
 ```toml
 [dependencies]
-obzenflow-topology = "0.1.0"
+obzenflow-topology = "0.2.0"
 ```
 
 For WASM targets:
 ```toml
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-obzenflow-topology = "0.1.0"
+obzenflow-topology = "0.2.0"
 ```
 
 ## Usage
