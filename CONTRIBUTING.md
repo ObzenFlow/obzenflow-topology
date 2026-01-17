@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to obzenflow-topology! We welcome contributions from the community.
 
+By participating, you agree to follow the Code of Conduct (`CODE_OF_CONDUCT.md`).
+
 ## Getting Started
 
 1. Fork the repository
@@ -23,7 +25,12 @@ Thank you for your interest in contributing to obzenflow-topology! We welcome co
 ### Building
 
 ```bash
+# Native build
 cargo build
+
+# WASM build (compile check)
+rustup target add wasm32-unknown-unknown
+cargo build --target wasm32-unknown-unknown
 ```
 
 ### Running Tests
@@ -31,6 +38,9 @@ cargo build
 ```bash
 # Run all tests
 cargo test
+
+# Run all tests (all features)
+cargo test --all-features
 
 # Run tests with output
 cargo test -- --nocapture
@@ -79,3 +89,7 @@ If you have questions, feel free to:
 ## License
 
 By contributing, you agree that your contributions will be licensed under the same terms as the project (MIT OR Apache-2.0).
+
+## Security
+
+Please do not open public issues for security vulnerabilities. See `SECURITY.md`.

@@ -10,4 +10,4 @@ pub struct Stage;
 pub type StageId = Id<Stage>;
 
 // Re-export stage type enums
-pub use stage_type::{StageType, StageRole};
+pub use stage_type::{StageRole, StageType};

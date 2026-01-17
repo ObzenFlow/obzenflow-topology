@@ -1,152 +1,192 @@
-# obzenflow-topology
+# ObzenFlow Topology
 
-Flow topology graph structures for ObzenFlow - a pure Rust implementation of directed graph structures for building and validating flow-based pipelines with support for cycles and feedback loops.
+`obzenflow-topology` is an opinionated, WASM-friendly crate for representing and validating flow/pipeline graphs. It was extracted from ObzenFlow so the native backend and the browser UI can share the exact same graph rules.
 
-## Features
+* Shared contract: same `Topology` + `TopologyError` on server and UI.
+* Validation at three levels: structural, semantic, and reachability.
+* Cycle-aware: supports multi-stage feedback loops and retry/backflow edges (self-cycles rejected).
+* Fast queries: cached upstream/downstream adjacency lists.
+* Deterministic: stable fingerprinting for caching and UI diffing.
+* Type-safe IDs: phantom-typed ULID `StageId` via `obzenflow-idkit` (no RNG required by default).
 
-- **Pure Data Structures**: No runtime dependencies, just graph topology
-- **Type Safety**: Strongly typed stage identifiers and types
-- **Cycle Support**: Allows multi-stage cycles for feedback loops and retry patterns
-- **Validation**: Connectivity analysis, cycle detection, and topology validation
-- **WASM Compatible**: Works in browser environments via WebAssembly
-- **Dual Licensed**: MIT OR Apache-2.0
+## Why this exists
 
-## Installation
+ObzenFlow is full-stack Rust: a native backend (`obzenflow`) plus a WASM UI (`obzen-flow-ui`). Both sides need to answer the same questions about a flow graph:
+
+* “Is this wiring valid?”
+* “What feeds into this stage?”
+* “Is this stage part of a feedback loop?”
+* “Can every stage reach a sink?”
+
+Rather than duplicating logic across languages/targets, this crate compiles into both and becomes the single source of truth.
+
+```
+obzenflow (native)  <---- JSON (stages/edges) ---->  obzen-flow-ui (wasm)
+         \                                         /
+          \----------- obzenflow-topology ---------/
+```
+
+## What this crate provides
+
+### 1) Validation
+
+`Topology::new(...)` performs full validation up front. For UI/editor workflows you can opt into structural-only construction and validate later.
+
+Validation is split into:
+
+* **Structural**: edge endpoints exist, no duplicates, no self-cycles, single connected component.
+* **Semantic**: enforces legal connections based on `StageType` → `StageRole` and `EdgeKind` (`|>` vs `<|`).
+* **Reachability**: requires at least one Producer and one Consumer, and every stage is on some producer → consumer path.
+
+### 2) Graph queries
+
+Once built, you get cheap queries:
+
+* `upstream_stages` / `downstream_stages`
+* `edges()` and stage metadata lookup
+* `is_in_cycle` (SCC-based)
+* `metrics()` and `topology_fingerprint()`
+
+### 3) Visualization helpers
+
+The crate includes simple port/shape types (`PortId`, `Shape`) that UIs can use as building blocks when turning graph structure into visuals.
+
+> Non-goal: This crate does not execute pipelines; it’s a value type + validation/query layer.
+
+## Install
+
+Most consumers will want serde support for round-tripping stage/edge data through JSON:
 
 ```toml
 [dependencies]
-obzenflow-topology = "0.2.0"
+obzenflow-topology = { version = "0.2", features = ["serde"] }
 ```
 
-For WASM targets:
+The same dependency works for `wasm32-unknown-unknown` (no RNG required).
+
+## Quick start
+
+```rust
+use obzenflow_topology::{DirectedEdge, EdgeKind, StageId, StageInfo, StageType, Topology};
+
+let source: StageId = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
+let transform: StageId = "01ARZ3NDEKTSV4RRFFQ69G5FAW".parse().unwrap();
+let sink: StageId = "01ARZ3NDEKTSV4RRFFQ69G5FAX".parse().unwrap();
+
+let stages = vec![
+    StageInfo::new(source, "source", StageType::FiniteSource),
+    StageInfo::new(transform, "transform", StageType::Transform),
+    StageInfo::new(sink, "sink", StageType::Sink),
+];
+
+let edges = vec![
+    DirectedEdge::new(source, transform, EdgeKind::Forward),
+    DirectedEdge::new(transform, sink, EdgeKind::Forward),
+];
+
+// Full validation happens here (structural + semantic + reachability).
+let topology = Topology::new(stages, edges).unwrap();
+
+// Queries are cheap (adjacency lists are cached).
+let upstream_of_sink = topology.upstream_stages(sink);
+let in_cycle = topology.is_in_cycle(transform);
+let fingerprint = topology.topology_fingerprint();
+let metrics = topology.metrics();
+```
+
+## Validation levels
+
+If you’re building an interactive editor, you often want to accept “draft” graphs and validate on demand:
+
+```rust
+use obzenflow_topology::{Topology, ValidationLevel};
+
+// `stages`/`edges` as in the Quick start example.
+let draft = Topology::new_unvalidated(stages, edges).unwrap();
+
+// Validate later (semantic only, or full).
+draft.validate_with_level(ValidationLevel::Semantic).unwrap();
+```
+
+`ValidationLevel`:
+
+* `Structural`: endpoints, duplicates, self-cycles, disconnected components
+* `Semantic`: structural + `(StageRole, EdgeKind)` connection rules
+* `Full`: semantic + reachability invariants (sources/sinks, producer→sink paths)
+
+## Cycles & backflow
+
+ObzenFlow allows multi-stage cycles for feedback loops and retry patterns. Cycles are represented explicitly with `EdgeKind::Backward` (`<|`) edges; self-cycles are rejected.
+
+Semantic rules are intentionally restrictive (high level):
+
+* Forward (`|>`): Producer/Processor → Processor/Consumer
+* Backward (`<|`): Consumer/Processor → Processor
+
+Use `topology.is_in_cycle(stage)` when you need to render or reason about feedback loops.
+
+## IDs, ULIDs, `obzenflow-idkit`, and RNG
+
+Topology IDs are ULIDs, wrapped in a phantom type for safety:
+
+* `StageId` is `obzenflow_idkit::Id<Stage>` (a phantom-typed `ulid::Ulid`).
+* This crate depends on `obzenflow-idkit` without its `gen` feature, so it does not require an RNG.
+* In practice, IDs usually come from your domain layer (backend) or from parsing API payloads (UI).
+
+If your application wants to generate IDs, do it in the app crate:
+
 ```toml
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-obzenflow-topology = "0.2.0"
+[dependencies]
+obzenflow-idkit = { version = "0.2", features = ["gen", "serde"] }
+getrandom = { version = "0.2", features = ["js"] } # browser wasm only
 ```
 
-## Usage
+## Algorithms & data structures (implementation notes)
 
-### Building a Topology
+This crate is intentionally “boring” and predictable:
 
-```rust
-use obzenflow_topology::{TopologyBuilder, StageInfo, StageType, StageId};
+* Stores stages in a `HashMap<StageId, StageInfo>` and edges in a `Vec<DirectedEdge>`.
+* Builds cached adjacency lists (`HashMap<StageId, HashSet<StageId>>`) for both downstream and upstream traversal.
+* Uses Tarjan SCC to compute cycle membership (`is_in_cycle`) in `O(V + E)`.
+* Structural validation is a single pass over edges plus a connectivity check (`O(V + E)`).
+* Full validation adds reachability checks to ensure every stage is on a producer → consumer path.
+* `topology_fingerprint()` sorts IDs/edges by raw ULID bytes to produce a stable `u64` across runs/targets.
 
-let mut builder = TopologyBuilder::new();
+## Testing (no RNG)
 
-// Add stages
-let source_id = StageId::new();
-let transform_id = StageId::new();
-let sink_id = StageId::new();
-
-builder.add_stage(StageInfo::new(source_id, "data_source"));
-builder.add_stage(StageInfo::new(transform_id, "processor"));
-builder.add_stage(StageInfo::new(sink_id, "output"));
-
-// Connect stages
-builder.add_edge(source_id, transform_id)?;
-builder.add_edge(transform_id, sink_id)?;
-
-// Build and validate
-let topology = builder.build()?;
-```
-
-### Topology Analysis
+Keep tests deterministic by synthesizing `StageId`s from a counter:
 
 ```rust
-use obzenflow_topology::{validate_acyclic, find_disconnected_stages};
+use std::sync::atomic::{AtomicU64, Ordering};
+use obzenflow_topology::StageId;
 
-// Check for cycles (note: multi-stage cycles are allowed, but self-cycles are forbidden)
-if let Err(e) = validate_acyclic(&topology) {
-    println!("Cycle detected: {}", e);
-}
+static CTR: AtomicU64 = AtomicU64::new(0);
 
-// Find disconnected stages
-let disconnected = find_disconnected_stages(&topology);
-if !disconnected.is_empty() {
-    println!("Disconnected stages: {:?}", disconnected);
-}
-```
-
-### Cycle Support
-
-This crate supports multi-stage cycles in topologies to enable:
-- **Feedback loops**: Output from downstream stages flowing back upstream
-- **Retry patterns**: Sending failed events back for reprocessing  
-- **Iterative processing**: Refining data through multiple passes
-
-Note: Self-cycles (a stage connecting to itself) are explicitly forbidden.
-
-### Stage Types
-
-The crate provides comprehensive stage type classification:
-
-```rust
-use obzenflow_topology::StageType;
-
-let stage_type = StageType::Transform;
-
-// Query stage properties
-if stage_type.consumes_events() {
-    // Stage processes input events
-}
-
-if stage_type.generates_events() {
-    // Stage produces output events
-}
-```
-
-## Architecture
-
-The crate is organized into the following modules:
-
-- **types**: Core type definitions (StageId, StageType)
-- **topology**: Graph structure and metrics
-- **builder**: Fluent API for constructing topologies
-- **validation**: Cycle detection and connectivity analysis
-- **stages**: Stage information and metadata
-
-## WASM Support
-
-This crate is designed to work in WebAssembly environments, making it suitable for browser-based visualization and tooling:
-
-```rust
-// Works in both native and WASM targets
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub fn create_topology() -> Topology {
-    // Topology creation works identically in WASM
-    TopologyBuilder::new().build().unwrap()
+fn next_stage_id() -> StageId {
+    let n = CTR.fetch_add(1, Ordering::Relaxed);
+    let mut bytes = [0u8; 16];
+    bytes[8..].copy_from_slice(&n.to_be_bytes());
+    StageId::from_bytes(bytes)
 }
 ```
 
 ## Testing
 
-Run the test suite:
-
 ```bash
 cargo test
 ```
 
-For WASM testing:
-```bash
-wasm-pack test --headless --firefox
-```
+## Project links
 
-## Contributing
+* Changelog: `CHANGELOG.md`
+* Contributing: `CONTRIBUTING.md`
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Project policies
+
+* Code of Conduct: `CODE_OF_CONDUCT.md`
+* Security: `SECURITY.md`
+* Trademarks: `TRADEMARKS.md`
 
 ## License
 
-This project is dual-licensed under either:
-
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-
-at your option.
-
-## Credits
-
-This crate is part of the ObzenFlow project, providing flow-based programming infrastructure for Rust applications.
+Dual-licensed under MIT OR Apache-2.0.

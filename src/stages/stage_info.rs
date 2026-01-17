@@ -61,7 +61,10 @@ pub struct StageExtensions {
 }
 
 /// Legacy metadata type - use StageInfo + StageExtensions instead
-#[deprecated(since = "0.2.0", note = "Use StageInfo with optional StageExtensions instead")]
+#[deprecated(
+    since = "0.2.0",
+    note = "Use StageInfo with optional StageExtensions instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageMetadata {
     pub id: StageId,

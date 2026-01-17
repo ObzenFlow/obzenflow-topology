@@ -14,7 +14,7 @@ fn test_empty_topology() {
             assert_eq!(topology.source_stages().len(), 0);
             assert_eq!(topology.sink_stages().len(), 0);
         }
-        Err(e) => panic!("Empty topology should be structurally valid: {}", e),
+        Err(e) => panic!("Empty topology should be structurally valid: {e}"),
     }
 }
 
@@ -36,7 +36,7 @@ fn test_minimum_valid_pipeline() {
             assert!(!topology.source_stages().contains(&transform));
             assert!(!topology.sink_stages().contains(&transform));
         }
-        Err(e) => panic!("Minimum pipeline should be structurally valid: {}", e),
+        Err(e) => panic!("Minimum pipeline should be structurally valid: {e}"),
     }
 }
 
@@ -69,7 +69,7 @@ fn test_diamond_topology() {
             assert_eq!(topology.upstream_stages(sink).len(), 2);
             assert_eq!(topology.metrics().max_depth, 2);
         }
-        Err(e) => panic!("Diamond topology should be structurally valid: {}", e),
+        Err(e) => panic!("Diamond topology should be structurally valid: {e}"),
     }
 }
 
@@ -88,7 +88,7 @@ fn test_self_loop_forbidden() {
         Err(TopologyError::SelfCycle { stage }) => {
             assert_eq!(stage, "self_loop");
         }
-        Err(e) => panic!("Expected SelfCycle error, but got: {}", e),
+        Err(e) => panic!("Expected SelfCycle error, but got: {e}"),
     }
 }
 
@@ -116,7 +116,7 @@ fn test_multiple_sources_and_sinks() {
             assert_eq!(topology.source_stages().len(), 1); // Only s1 is a true source now
             assert_eq!(topology.sink_stages().len(), 2); // Two sinks
         }
-        Err(e) => panic!("Multiple pipelines should be structurally valid: {}", e),
+        Err(e) => panic!("Multiple pipelines should be structurally valid: {e}"),
     }
 }
 
@@ -139,7 +139,7 @@ fn test_stage_name_retrieval() {
             let non_existent = other_builder.add_stage(Some("other".to_string()));
             assert_eq!(topology.stage_name(non_existent), None);
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -157,7 +157,7 @@ fn test_flow_naming() {
             assert_eq!(topology.source_stage_name(), "data_ingestion");
             assert_eq!(topology.sink_stage_name(), "sink");
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -176,6 +176,6 @@ fn test_has_edge_queries() {
             assert!(!topology.has_edge(s1, s3)); // No direct edge
             assert!(!topology.has_edge(s3, s1)); // Wrong direction
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }

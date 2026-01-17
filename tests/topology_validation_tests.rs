@@ -15,7 +15,7 @@ fn test_valid_topology_creation() {
             assert_eq!(metrics.num_stages, 3);
             assert_eq!(metrics.num_edges, 2);
         }
-        Err(e) => panic!("Unexpected error creating valid topology: {}", e),
+        Err(e) => panic!("Unexpected error creating valid topology: {e}"),
     }
 }
 
@@ -41,7 +41,7 @@ fn test_cycles_allowed() {
             assert!(topology.has_edge(s2, s3));
             assert!(topology.has_edge(s3, s1)); // The back edge
         }
-        Err(e) => panic!("Cycles should be allowed as of FLOWIP-082, but got error: {}", e),
+        Err(e) => panic!("Cycles should be allowed as of FLOWIP-082, but got error: {e}"),
     }
 }
 
@@ -59,7 +59,7 @@ fn test_duplicate_edge_detection() {
             assert_eq!(to, s2);
         }
         Ok(_) => panic!("Expected duplicate edge detection to fail"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -81,7 +81,7 @@ fn test_explicit_duplicate_edge_detection() {
             assert_eq!(to, s2);
         }
         Ok(_) => panic!("Expected duplicate edge detection to fail"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -103,7 +103,7 @@ fn test_disconnected_stages_detection() {
             // The disconnected stage should be s3
         }
         Ok(_) => panic!("Expected disconnected stage detection to fail"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -143,10 +143,10 @@ fn test_complex_topology_metrics() {
             assert_eq!(metrics.num_sources, 1);
             assert_eq!(metrics.num_sinks, 1);
             assert_eq!(metrics.max_fan_out, 3); // source fans out to 3
-            assert_eq!(metrics.max_fan_in, 3);  // sink has 3 inputs
-            assert_eq!(metrics.max_depth, 2);   // source -> transform -> sink
+            assert_eq!(metrics.max_fan_in, 3); // sink has 3 inputs
+            assert_eq!(metrics.max_depth, 2); // source -> transform -> sink
         }
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -176,7 +176,7 @@ fn test_isolated_node_detection() {
             assert_eq!(stages.len(), 1);
         }
         Ok(_) => panic!("Expected disconnected stage detection"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -199,8 +199,8 @@ fn test_document_processor_retry_pattern() {
     builder.add_edge(validator, storage);
 
     // Retry flow
-    builder.add_edge(validator, fixer);    // Failed docs go to fixer
-    builder.add_edge(fixer, validator);    // Fixed docs return to validator (cycle!)
+    builder.add_edge(validator, fixer); // Failed docs go to fixer
+    builder.add_edge(fixer, validator); // Fixed docs return to validator (cycle!)
 
     // Use build_unchecked since we're testing structural retry pattern
     match builder.build_unchecked() {
@@ -217,6 +217,6 @@ fn test_document_processor_retry_pattern() {
             assert_eq!(topology.downstream_stages(fixer), vec![validator]);
             assert_eq!(topology.upstream_stages(validator).len(), 2); // from source and fixer
         }
-        Err(e) => panic!("Document processor pattern should be structurally valid, but got: {}", e),
+        Err(e) => panic!("Document processor pattern should be structurally valid, but got: {e}"),
     }
 }

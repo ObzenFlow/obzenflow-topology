@@ -1,11 +1,14 @@
-use std::collections::{HashMap, HashSet};
 use crate::stages::{StageId, StageInfo};
 use crate::topology::DirectedEdge;
-use crate::validation::{TopologyError, ValidationResult, compute_sccs, validate_edges_and_structure, validate_all_connections, validate_topology_structure};
 use crate::types::StageRole;
+use crate::validation::{
+    compute_sccs, validate_all_connections, validate_edges_and_structure,
+    validate_topology_structure, TopologyError, ValidationResult,
+};
+use std::collections::{HashMap, HashSet};
 
 /// Complete topology with efficient traversal
-/// 
+///
 /// As of FLOWIP-082, topologies support cycles to enable feedback loops,
 /// retry patterns, and iterative processing via the `<|` operator
 #[derive(Debug, Clone)]
@@ -17,7 +20,7 @@ pub struct Topology {
     // Using HashSet for O(1) contains() checks
     downstream: HashMap<StageId, HashSet<StageId>>,
     upstream: HashMap<StageId, HashSet<StageId>>,
-    
+
     // Stages that are part of cycles (computed from SCCs)
     stages_in_cycles: HashSet<StageId>,
 }
@@ -39,8 +42,12 @@ impl Topology {
     /// "Unvalidated" means: not semantically or reachability validated.
     /// Structural invariants (valid endpoints, no duplicates, no self-cycles, no disconnected components)
     /// still hold so core APIs can rely on consistent graph structure.
-    pub fn new_unvalidated(stages: Vec<StageInfo>, edges: Vec<DirectedEdge>) -> ValidationResult<Self> {
-        let stage_map: HashMap<StageId, StageInfo> = stages.into_iter().map(|s| (s.id, s)).collect();
+    pub fn new_unvalidated(
+        stages: Vec<StageInfo>,
+        edges: Vec<DirectedEdge>,
+    ) -> ValidationResult<Self> {
+        let stage_map: HashMap<StageId, StageInfo> =
+            stages.into_iter().map(|s| (s.id, s)).collect();
 
         // Run structural validation on edges
         validate_edges_and_structure(&stage_map, &edges)?;
@@ -105,14 +112,16 @@ impl Topology {
 
     /// Get stages that flow INTO this stage
     pub fn upstream_stages(&self, stage: StageId) -> Vec<StageId> {
-        self.upstream.get(&stage)
+        self.upstream
+            .get(&stage)
             .map(|set| set.iter().copied().collect())
             .unwrap_or_default()
     }
 
     /// Get stages that this stage flows TO
     pub fn downstream_stages(&self, stage: StageId) -> Vec<StageId> {
-        self.downstream.get(&stage)
+        self.downstream
+            .get(&stage)
             .map(|set| set.iter().copied().collect())
             .unwrap_or_default()
     }
@@ -229,7 +238,6 @@ impl Topology {
 
     /// Get source stage name (assumes single source)
     pub fn source_stage_name(&self) -> String {
-
         let sources = self.source_stages();
         if sources.len() == 1 {
             if let Some(stage_info) = self.stages.get(&sources[0]) {
@@ -241,7 +249,6 @@ impl Topology {
 
     /// Get sink stage name (assumes single sink)
     pub fn sink_stage_name(&self) -> String {
-
         let sinks = self.sink_stages();
         if sinks.len() == 1 {
             if let Some(stage_info) = self.stages.get(&sinks[0]) {
@@ -258,12 +265,14 @@ impl Topology {
             num_edges: self.edges.len(),
             num_sources: self.source_stages().len(),
             num_sinks: self.sink_stages().len(),
-            max_fan_out: self.downstream
+            max_fan_out: self
+                .downstream
                 .values()
                 .map(|set| set.len())
                 .max()
                 .unwrap_or(0),
-            max_fan_in: self.upstream
+            max_fan_in: self
+                .upstream
                 .values()
                 .map(|set| set.len())
                 .max()
@@ -291,7 +300,8 @@ impl Topology {
 
             for downstream in self.downstream_stages(stage) {
                 let new_depth = depth + 1;
-                let should_update = depths.get(&downstream)
+                let should_update = depths
+                    .get(&downstream)
                     .map(|&d| new_depth > d)
                     .unwrap_or(true);
 
@@ -312,7 +322,7 @@ impl Topology {
             .map(|set| set.contains(&to))
             .unwrap_or(false)
     }
-    
+
     /// Check if a stage is part of a cycle (has a path back to itself)
     pub fn is_in_cycle(&self, stage_id: StageId) -> bool {
         // Use cached SCC information (FLOWIP-082g)
@@ -377,13 +387,12 @@ mod tests {
 
     #[test]
     fn test_self_cycle_rejected() {
-        use crate::validation::TopologyError;
-        use crate::topology::{DirectedEdge, EdgeKind};
         use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
+        use crate::validation::TopologyError;
 
         let stage_id = crate::test_ids::next_stage_id();
-        let stage =
-            StageInfo::new(stage_id, "processor", crate::types::StageType::Transform);
+        let stage = StageInfo::new(stage_id, "processor", crate::types::StageType::Transform);
         let stages = vec![stage.clone()];
 
         // Create self-cycle edge
@@ -403,8 +412,8 @@ mod tests {
 
     #[test]
     fn test_multi_stage_cycle_allowed() {
-        use crate::topology::{DirectedEdge, EdgeKind};
         use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
 
         let validator_id = crate::test_ids::next_stage_id();
         let fixer_id = crate::test_ids::next_stage_id();
@@ -413,8 +422,7 @@ mod tests {
             "validator",
             crate::types::StageType::Transform,
         );
-        let fixer =
-            StageInfo::new(fixer_id, "fixer", crate::types::StageType::Transform);
+        let fixer = StageInfo::new(fixer_id, "fixer", crate::types::StageType::Transform);
         let stages = vec![validator.clone(), fixer.clone()];
 
         // Create a cycle between two different stages (allowed structurally)
@@ -438,8 +446,8 @@ mod tests {
 
     #[test]
     fn test_scc_cycle_detection() {
-        use crate::topology::{DirectedEdge, EdgeKind};
         use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
 
         // Create a more complex topology: A -> B -> C -> D
         //                                       ^         |

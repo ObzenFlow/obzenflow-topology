@@ -36,7 +36,11 @@ impl TopologyBuilder {
 
         // If there's a current stage, create an edge from it to this new stage
         if let Some(from) = self.current_stage {
-        self.edges.push(DirectedEdge::new(from, id, crate::topology::EdgeKind::Forward));
+            self.edges.push(DirectedEdge::new(
+                from,
+                id,
+                crate::topology::EdgeKind::Forward,
+            ));
         }
 
         self.current_stage = Some(id);
@@ -48,21 +52,23 @@ impl TopologyBuilder {
     pub fn add_stage(&mut self, name: Option<String>) -> StageId {
         use once_cell::sync::Lazy;
         use std::sync::Mutex;
-        
+
         static COUNTER: Lazy<Mutex<u128>> = Lazy::new(|| Mutex::new(0));
         let mut counter = COUNTER.lock().unwrap();
         *counter += 1;
-        
+
         let id = StageId::from_bytes((*counter).to_be_bytes());
         // Default to a generic transform stage type for test-only APIs
         self.add_stage_with_id(id, name, crate::types::StageType::Transform)
     }
 
-
     /// Add an explicit forward edge between stages
     pub fn add_edge(&mut self, from: StageId, to: StageId) {
-        self.edges
-            .push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Forward));
+        self.edges.push(DirectedEdge::new(
+            from,
+            to,
+            crate::topology::EdgeKind::Forward,
+        ));
     }
 
     /// Add an explicit edge with a specific kind (Forward or Backward)
@@ -77,8 +83,11 @@ impl TopologyBuilder {
 
     /// Add an explicit backward edge between stages (for backflow/retry patterns)
     pub fn add_backward_edge(&mut self, from: StageId, to: StageId) {
-        self.edges
-            .push(DirectedEdge::new(from, to, crate::topology::EdgeKind::Backward));
+        self.edges.push(DirectedEdge::new(
+            from,
+            to,
+            crate::topology::EdgeKind::Backward,
+        ));
     }
 
     /// Set the current stage (for chaining)

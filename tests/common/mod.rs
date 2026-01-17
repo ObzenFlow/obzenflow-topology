@@ -1,7 +1,7 @@
 // Common test utilities for topology tests
+use obzenflow_idkit::Id;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
-use obzenflow_idkit::Id;
 
 pub type StageId = Id<obzenflow_topology::types::Stage>;
 

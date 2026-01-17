@@ -1,6 +1,4 @@
-use obzenflow_topology::{
-    DirectedEdge, EdgeKind, StageInfo, StageType, Topology, TopologyError,
-};
+use obzenflow_topology::{DirectedEdge, EdgeKind, StageInfo, StageType, Topology, TopologyError};
 
 mod common;
 use common::next_stage_id;
@@ -38,20 +36,21 @@ fn test_semantic_sink_to_source_forward_rejected() {
     let source = mk_stage("source", StageType::FiniteSource);
 
     let stages = vec![sink.clone(), source.clone()];
-    let edges = vec![DirectedEdge::new(
-        sink.id,
-        source.id,
-        EdgeKind::Forward,
-    )];
+    let edges = vec![DirectedEdge::new(sink.id, source.id, EdgeKind::Forward)];
 
     match Topology::new(stages, edges) {
-        Err(TopologyError::InvalidConnection { operator, from_name, to_name, .. }) => {
+        Err(TopologyError::InvalidConnection {
+            operator,
+            from_name,
+            to_name,
+            ..
+        }) => {
             assert_eq!(operator, "|>");
             assert_eq!(from_name, "sink");
             assert_eq!(to_name, "source");
         }
         Ok(_) => panic!("Expected InvalidConnection error for sink |> source"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -62,16 +61,12 @@ fn test_semantic_no_sources_error() {
     let sink = mk_stage("sink", StageType::Sink);
 
     let stages = vec![proc.clone(), sink.clone()];
-    let edges = vec![DirectedEdge::new(
-        proc.id,
-        sink.id,
-        EdgeKind::Forward,
-    )];
+    let edges = vec![DirectedEdge::new(proc.id, sink.id, EdgeKind::Forward)];
 
     match Topology::new(stages, edges) {
         Err(TopologyError::NoSources) => {}
         Ok(_) => panic!("Expected NoSources error"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -82,16 +77,12 @@ fn test_semantic_no_sinks_error() {
     let proc = mk_stage("proc", StageType::Transform);
 
     let stages = vec![source.clone(), proc.clone()];
-    let edges = vec![DirectedEdge::new(
-        source.id,
-        proc.id,
-        EdgeKind::Forward,
-    )];
+    let edges = vec![DirectedEdge::new(source.id, proc.id, EdgeKind::Forward)];
 
     match Topology::new(stages, edges) {
         Err(TopologyError::NoSinks) => {}
         Ok(_) => panic!("Expected NoSinks error"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -117,7 +108,7 @@ fn test_semantic_unreachable_stages_error() {
             assert!(stages.contains(&sink2.id));
         }
         Ok(_) => panic!("Expected UnreachableStages error"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
 
@@ -144,7 +135,6 @@ fn test_semantic_unproductive_stages_error() {
             // but we only assert proc2 is included.
         }
         Ok(_) => panic!("Expected UnproductiveStages error"),
-        Err(e) => panic!("Unexpected error: {}", e),
+        Err(e) => panic!("Unexpected error: {e}"),
     }
 }
-

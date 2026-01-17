@@ -9,7 +9,7 @@ use core::fmt;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PortId {
     pub stage: StageId,
-    pub port: usize,  // 0, 1, 2... within that stage
+    pub port: usize, // 0, 1, 2... within that stage
 }
 
 impl PortId {
@@ -29,16 +29,16 @@ impl fmt::Display for PortId {
 pub enum Shape {
     /// No inlets, one outlet (generates events)
     Source { out: PortId },
-    
+
     /// One inlet, one outlet (transforms events)
     Flow { in_port: PortId, out: PortId },
-    
+
     /// One inlet, no outlets (consumes events)
     Sink { in_port: PortId },
-    
+
     /// One inlet, multiple outlets (splits stream)
     Broadcast { in_port: PortId, outs: Vec<PortId> },
-    
+
     /// Multiple inlets, one outlet (merges streams)
     Merge { ins: Vec<PortId>, out: PortId },
 }
@@ -54,7 +54,7 @@ impl Shape {
             Shape::Merge { ins, .. } => ins.iter().collect(),
         }
     }
-    
+
     /// Get all outlet ports
     pub fn outlets(&self) -> Vec<&PortId> {
         match self {
@@ -65,12 +65,14 @@ impl Shape {
             Shape::Merge { out, .. } => vec![out],
         }
     }
-    
+
     /// Create a source shape for the given stage
     pub fn new_source(stage: StageId) -> Self {
-        Shape::Source { out: PortId::new(stage, 0) }
+        Shape::Source {
+            out: PortId::new(stage, 0),
+        }
     }
-    
+
     /// Create a flow shape for the given stage
     pub fn new_flow(stage: StageId) -> Self {
         Shape::Flow {
@@ -78,12 +80,14 @@ impl Shape {
             out: PortId::new(stage, 1),
         }
     }
-    
+
     /// Create a sink shape for the given stage
     pub fn new_sink(stage: StageId) -> Self {
-        Shape::Sink { in_port: PortId::new(stage, 0) }
+        Shape::Sink {
+            in_port: PortId::new(stage, 0),
+        }
     }
-    
+
     /// Simple classification for backwards compatibility
     pub fn stage_type(&self) -> StageType {
         match self {
