@@ -3,8 +3,7 @@ use crate::types::StageType;
 use serde::{Deserialize, Serialize};
 
 /// Extensible stage information - core topology node metadata
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageInfo {
     pub id: StageId,
     /// Human-readable name (for debugging/logging/UI)
@@ -13,10 +12,7 @@ pub struct StageInfo {
     pub stage_type: StageType,
 
     /// Optional extension point for additional metadata (middleware, UI hints, etc.)
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<StageExtensions>,
 }
 
@@ -42,21 +38,14 @@ impl StageInfo {
 }
 
 /// Future-proofing: extensible metadata container for stages
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StageExtensions {
     /// Middleware configuration (rate limiters, circuit breakers, retry policies)
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub middleware: Option<serde_json::Value>,
 
     /// UI-specific hints (custom icons, colors, grouping)
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_hints: Option<serde_json::Value>,
 }
 

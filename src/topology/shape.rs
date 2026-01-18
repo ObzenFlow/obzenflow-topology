@@ -5,8 +5,9 @@ use crate::types::StageType;
 use core::fmt;
 
 /// Port identifier - composite of stage ID and local port number
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct PortId {
     pub stage: StageId,
     pub port: usize, // 0, 1, 2... within that stage

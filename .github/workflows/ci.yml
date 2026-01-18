@@ -13,6 +13,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Generate lockfile
+        run: cargo generate-lockfile
       - uses: Swatinem/rust-cache@v2
 
       - name: Format
@@ -35,6 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Generate lockfile
+        run: cargo generate-lockfile
       - uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-deny
@@ -60,11 +64,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - name: Generate lockfile
+        run: cargo generate-lockfile
       - uses: Swatinem/rust-cache@v2
 
       - name: Build (wasm32)
         run: cargo build --target wasm32-unknown-unknown
-
-      - name: Build (wasm32, serde)
-        run: cargo build --target wasm32-unknown-unknown --features serde
-
