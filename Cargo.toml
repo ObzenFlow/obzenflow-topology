@@ -28,7 +28,3 @@ insta = "1.34"
 
 [features]
 default = []
-# Optional: Integration test helpers
-test-utils = []
-# Enables serde derives for StageInfo/PortId/etc. (StageId serde is provided by obzenflow-idkit.)
-serde = []

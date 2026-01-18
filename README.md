@@ -55,11 +55,11 @@ The crate includes simple port/shape types (`PortId`, `Shape`) that UIs can use 
 
 ## Install
 
-Most consumers will want serde support for round-tripping stage/edge data through JSON:
+Serde support is included by default for round-tripping stage/edge data through JSON:
 
 ```toml
 [dependencies]
-obzenflow-topology = { version = "0.2", features = ["serde"] }
+obzenflow-topology = "0.2"
 ```
 
 The same dependency works for `wasm32-unknown-unknown` (no RNG required).

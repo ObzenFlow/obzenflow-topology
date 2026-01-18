@@ -64,7 +64,3 @@ jobs:
 
       - name: Build (wasm32)
         run: cargo build --target wasm32-unknown-unknown
-
-      - name: Build (wasm32, serde)
-        run: cargo build --target wasm32-unknown-unknown --features serde
-
