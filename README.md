@@ -11,7 +11,7 @@
 
 ## Why this exists
 
-ObzenFlow is full-stack Rust: a native backend (`obzenflow`) plus a WASM UI (`obzen-flow-ui`). Both sides need to answer the same questions about a flow graph:
+ObzenFlow is full-stack Rust: a native backend (`obzenflow`) plus a WASM UI (`obzenflow-studio`). Both sides need to answer the same questions about a flow graph:
 
 * “Is this wiring valid?”
 * “What feeds into this stage?”
@@ -21,7 +21,7 @@ ObzenFlow is full-stack Rust: a native backend (`obzenflow`) plus a WASM UI (`ob
 Rather than duplicating logic across languages/targets, this crate compiles into both and becomes the single source of truth.
 
 ```
-obzenflow (native)  <---- JSON (stages/edges) ---->  obzen-flow-ui (wasm)
+obzenflow (native)  <---- JSON (stages/edges) ---->  obzenflow-studio (wasm)
          \                                         /
           \----------- obzenflow-topology ---------/
 ```
