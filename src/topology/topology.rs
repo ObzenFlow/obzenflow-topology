@@ -23,6 +23,10 @@ pub struct Topology {
 
     // Stages that are part of cycles (computed from SCCs)
     stages_in_cycles: HashSet<StageId>,
+
+    // Strongly connected components (only SCCs with len > 1 are stored)
+    scc_members: Vec<HashSet<StageId>>,  // indexed by scc_id
+    stage_to_scc: HashMap<StageId, u32>, // stage -> scc_id
 }
 
 /// Validation level for topology semantics
@@ -62,14 +66,22 @@ impl Topology {
         }
 
         // Compute SCCs for cycle detection (FLOWIP-082g)
-        let sccs = compute_sccs(&stage_map, &downstream);
-        let mut stages_in_cycles = HashSet::new();
-        for scc in &sccs {
-            // All stages in an SCC with >1 stage are in a cycle
-            if scc.len() > 1 {
-                stages_in_cycles.extend(scc.iter().copied());
+        let mut scc_members: Vec<HashSet<StageId>> = compute_sccs(&stage_map, &downstream)
+            .into_iter()
+            .filter(|scc| scc.len() > 1)
+            .collect();
+
+        // Stabilise SCC identifiers by sorting by minimum stage id in each SCC.
+        scc_members.sort_by_key(|scc| scc.iter().copied().min().expect("non-empty SCC"));
+
+        let mut stage_to_scc = HashMap::new();
+        for (scc_index, scc) in scc_members.iter().enumerate() {
+            let scc_id = u32::try_from(scc_index).expect("SCC index exceeds u32::MAX");
+            for stage_id in scc {
+                stage_to_scc.insert(*stage_id, scc_id);
             }
         }
+        let stages_in_cycles = stage_to_scc.keys().copied().collect();
 
         Ok(Self {
             stages: stage_map,
@@ -77,6 +89,8 @@ impl Topology {
             downstream,
             upstream,
             stages_in_cycles,
+            scc_members,
+            stage_to_scc,
         })
     }
 
@@ -328,6 +342,16 @@ impl Topology {
         // Use cached SCC information (FLOWIP-082g)
         self.stages_in_cycles.contains(&stage_id)
     }
+
+    /// Returns the SCC identifier for this stage, or None if it is not in any SCC.
+    pub fn scc_id(&self, stage_id: StageId) -> Option<u32> {
+        self.stage_to_scc.get(&stage_id).copied()
+    }
+
+    /// Returns the set of stages that belong to the given SCC identifier.
+    pub fn scc_members(&self, scc_id: u32) -> Option<&HashSet<StageId>> {
+        self.scc_members.get(scc_id as usize)
+    }
 }
 
 /// Topology metrics for debugging and optimization
@@ -479,10 +503,21 @@ mod tests {
 
         // A is not in a cycle
         assert!(!topology.is_in_cycle(a.id));
+        assert_eq!(topology.scc_id(a.id), None);
 
         // B, C, D are all in the same cycle
         assert!(topology.is_in_cycle(b.id));
         assert!(topology.is_in_cycle(c.id));
         assert!(topology.is_in_cycle(d.id));
+
+        let scc_id = topology.scc_id(b.id).expect("b should have scc_id");
+        assert_eq!(topology.scc_id(c.id), Some(scc_id));
+        assert_eq!(topology.scc_id(d.id), Some(scc_id));
+
+        let members = topology.scc_members(scc_id).expect("scc_members should exist");
+        assert_eq!(members.len(), 3);
+        assert!(members.contains(&b.id));
+        assert!(members.contains(&c.id));
+        assert!(members.contains(&d.id));
     }
 }
