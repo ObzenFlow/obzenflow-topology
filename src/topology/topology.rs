@@ -1,6 +1,6 @@
 use crate::stages::{StageId, StageInfo};
 use crate::topology::DirectedEdge;
-use crate::types::StageRole;
+use crate::types::{SccId, StageRole};
 use crate::validation::{
     compute_sccs, validate_all_connections, validate_edges_and_structure,
     validate_topology_structure, TopologyError, ValidationResult,
@@ -25,8 +25,8 @@ pub struct Topology {
     stages_in_cycles: HashSet<StageId>,
 
     // Strongly connected components (only SCCs with len > 1 are stored)
-    scc_members: Vec<HashSet<StageId>>,  // indexed by scc_id
-    stage_to_scc: HashMap<StageId, u32>, // stage -> scc_id
+    scc_members: Vec<HashSet<StageId>>,    // indexed by SccId
+    stage_to_scc: HashMap<StageId, SccId>, // stage -> SccId
 }
 
 /// Validation level for topology semantics
@@ -76,7 +76,10 @@ impl Topology {
 
         let mut stage_to_scc = HashMap::new();
         for (scc_index, scc) in scc_members.iter().enumerate() {
-            let scc_id = u32::try_from(scc_index).expect("SCC index exceeds u32::MAX");
+            let scc_id = SccId::new(
+                u32::try_from(scc_index)
+                    .map_err(|_| TopologyError::SccIndexOverflow { index: scc_index })?,
+            );
             for stage_id in scc {
                 stage_to_scc.insert(*stage_id, scc_id);
             }
@@ -344,13 +347,13 @@ impl Topology {
     }
 
     /// Returns the SCC identifier for this stage, or None if it is not in any SCC.
-    pub fn scc_id(&self, stage_id: StageId) -> Option<u32> {
+    pub fn scc_id(&self, stage_id: StageId) -> Option<SccId> {
         self.stage_to_scc.get(&stage_id).copied()
     }
 
     /// Returns the set of stages that belong to the given SCC identifier.
-    pub fn scc_members(&self, scc_id: u32) -> Option<&HashSet<StageId>> {
-        self.scc_members.get(scc_id as usize)
+    pub fn scc_members(&self, scc_id: SccId) -> Option<&HashSet<StageId>> {
+        self.scc_members.get(scc_id.into_index())
     }
 }
 
@@ -369,6 +372,7 @@ pub struct TopologyMetrics {
 #[cfg(test)]
 mod tests {
     use crate::builder::TopologyBuilder;
+    use crate::types::SccId;
 
     #[test]
     fn test_simple_pipeline() {
@@ -647,7 +651,7 @@ mod tests {
         }
 
         // No SCCs exist, so even index 0 should return None.
-        assert_eq!(topology.scc_members(0), None);
+        assert_eq!(topology.scc_members(SccId::new(0)), None);
     }
 
     #[test]
@@ -691,9 +695,9 @@ mod tests {
             builder.build_unchecked().unwrap()
         };
 
-        assert_eq!(topology.scc_members(0), None);
-        assert_eq!(topology.scc_members(999), None);
-        assert_eq!(topology.scc_members(u32::MAX), None);
+        assert_eq!(topology.scc_members(SccId::new(0)), None);
+        assert_eq!(topology.scc_members(SccId::new(999)), None);
+        assert_eq!(topology.scc_members(SccId::new(u32::MAX)), None);
     }
 
     #[test]

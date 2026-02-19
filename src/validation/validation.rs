@@ -69,6 +69,9 @@ pub enum TopologyError {
             .join(", ")
     )]
     UnproductiveStages { stages: Vec<StageId> },
+
+    #[error("SCC index {index} exceeds u32::MAX")]
+    SccIndexOverflow { index: usize },
 }
 
 /// Validate a single connection based on StageRole + EdgeKind

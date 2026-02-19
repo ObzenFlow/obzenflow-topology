@@ -27,5 +27,5 @@ pub use stages::StageInfo;
 #[allow(deprecated)]
 pub use stages::StageMetadata;
 pub use topology::{DirectedEdge, EdgeKind, Topology, TopologyMetrics, ValidationLevel};
-pub use types::{StageId, StageRole, StageType};
+pub use types::{SccId, StageId, StageRole, StageType};
 pub use validation::{TopologyError, ValidationResult};
