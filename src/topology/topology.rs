@@ -514,7 +514,9 @@ mod tests {
         assert_eq!(topology.scc_id(c.id), Some(scc_id));
         assert_eq!(topology.scc_id(d.id), Some(scc_id));
 
-        let members = topology.scc_members(scc_id).expect("scc_members should exist");
+        let members = topology
+            .scc_members(scc_id)
+            .expect("scc_members should exist");
         assert_eq!(members.len(), 3);
         assert!(members.contains(&b.id));
         assert!(members.contains(&c.id));
