@@ -522,4 +522,224 @@ mod tests {
         assert!(members.contains(&c.id));
         assert!(members.contains(&d.id));
     }
+
+    #[test]
+    fn test_two_disjoint_sccs_get_distinct_ids() {
+        use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
+
+        // Topology: src -> A <-> B -> C <-> D -> snk
+        //
+        // Two disjoint SCCs: {A, B} and {C, D}.
+        let src_id = crate::test_ids::next_stage_id();
+        let a_id = crate::test_ids::next_stage_id();
+        let b_id = crate::test_ids::next_stage_id();
+        let c_id = crate::test_ids::next_stage_id();
+        let d_id = crate::test_ids::next_stage_id();
+        let snk_id = crate::test_ids::next_stage_id();
+
+        let src = StageInfo::new(src_id, "src", crate::types::StageType::FiniteSource);
+        let a = StageInfo::new(a_id, "a", crate::types::StageType::Transform);
+        let b = StageInfo::new(b_id, "b", crate::types::StageType::Transform);
+        let c = StageInfo::new(c_id, "c", crate::types::StageType::Transform);
+        let d = StageInfo::new(d_id, "d", crate::types::StageType::Transform);
+        let snk = StageInfo::new(snk_id, "snk", crate::types::StageType::Sink);
+
+        let stages = vec![
+            src.clone(),
+            a.clone(),
+            b.clone(),
+            c.clone(),
+            d.clone(),
+            snk.clone(),
+        ];
+
+        let edges = vec![
+            DirectedEdge::new(src.id, a.id, EdgeKind::Forward),
+            DirectedEdge::new(a.id, b.id, EdgeKind::Forward),
+            DirectedEdge::new(b.id, a.id, EdgeKind::Backward), // SCC 1: {A, B}
+            DirectedEdge::new(b.id, c.id, EdgeKind::Forward),
+            DirectedEdge::new(c.id, d.id, EdgeKind::Forward),
+            DirectedEdge::new(d.id, c.id, EdgeKind::Backward), // SCC 2: {C, D}
+            DirectedEdge::new(d.id, snk.id, EdgeKind::Forward),
+        ];
+
+        let topology = super::Topology::new_unvalidated(stages, edges).unwrap();
+
+        // Non-cycle stages return None.
+        assert_eq!(topology.scc_id(src.id), None);
+        assert_eq!(topology.scc_id(snk.id), None);
+
+        // Both SCCs have valid, distinct identifiers.
+        let scc_ab = topology.scc_id(a.id).expect("a should be in an SCC");
+        let scc_cd = topology.scc_id(c.id).expect("c should be in an SCC");
+        assert_ne!(scc_ab, scc_cd, "disjoint SCCs must have distinct ids");
+
+        // Members within each SCC share the same id.
+        assert_eq!(topology.scc_id(b.id), Some(scc_ab));
+        assert_eq!(topology.scc_id(d.id), Some(scc_cd));
+
+        // Member sets are correct and do not bleed.
+        let members_ab = topology.scc_members(scc_ab).unwrap();
+        assert_eq!(members_ab.len(), 2);
+        assert!(members_ab.contains(&a.id));
+        assert!(members_ab.contains(&b.id));
+        assert!(!members_ab.contains(&c.id));
+
+        let members_cd = topology.scc_members(scc_cd).unwrap();
+        assert_eq!(members_cd.len(), 2);
+        assert!(members_cd.contains(&c.id));
+        assert!(members_cd.contains(&d.id));
+        assert!(!members_cd.contains(&a.id));
+    }
+
+    #[test]
+    fn test_minimal_two_stage_scc() {
+        use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
+
+        let x_id = crate::test_ids::next_stage_id();
+        let y_id = crate::test_ids::next_stage_id();
+
+        let x = StageInfo::new(x_id, "x", crate::types::StageType::Transform);
+        let y = StageInfo::new(y_id, "y", crate::types::StageType::Transform);
+
+        let edges = vec![
+            DirectedEdge::new(x.id, y.id, EdgeKind::Forward),
+            DirectedEdge::new(y.id, x.id, EdgeKind::Backward),
+        ];
+
+        let topology =
+            super::Topology::new_unvalidated(vec![x.clone(), y.clone()], edges).unwrap();
+
+        let scc_id = topology.scc_id(x.id).expect("x should be in SCC");
+        assert_eq!(topology.scc_id(y.id), Some(scc_id));
+
+        let members = topology.scc_members(scc_id).unwrap();
+        assert_eq!(members.len(), 2);
+        assert!(members.contains(&x.id));
+        assert!(members.contains(&y.id));
+    }
+
+    #[test]
+    fn test_dag_has_no_sccs() {
+        // Pure DAG: src -> a -> b -> snk. No cycles.
+        let topology = {
+            let mut builder = TopologyBuilder::new();
+            let _src = builder.add_stage(Some("src".to_string()));
+            let _a = builder.add_stage(Some("a".to_string()));
+            let _b = builder.add_stage(Some("b".to_string()));
+            let _snk = builder.add_stage(Some("snk".to_string()));
+            builder.build_unchecked().unwrap()
+        };
+
+        for stage in topology.stages() {
+            assert!(
+                !topology.is_in_cycle(stage.id),
+                "stage {:?} should not be in a cycle",
+                stage.name
+            );
+            assert_eq!(
+                topology.scc_id(stage.id),
+                None,
+                "stage {:?} should have no scc_id",
+                stage.name
+            );
+        }
+
+        // No SCCs exist, so even index 0 should return None.
+        assert_eq!(topology.scc_members(0), None);
+    }
+
+    #[test]
+    fn test_scc_id_is_deterministic_across_constructions() {
+        use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
+
+        // Build the same topology twice with the same stage IDs and
+        // verify scc_id assignments are identical.
+        let a_id = crate::test_ids::next_stage_id();
+        let b_id = crate::test_ids::next_stage_id();
+        let c_id = crate::test_ids::next_stage_id();
+
+        let build = || {
+            let a = StageInfo::new(a_id, "a", crate::types::StageType::Transform);
+            let b = StageInfo::new(b_id, "b", crate::types::StageType::Transform);
+            let c = StageInfo::new(c_id, "c", crate::types::StageType::Transform);
+
+            let edges = vec![
+                DirectedEdge::new(a.id, b.id, EdgeKind::Forward),
+                DirectedEdge::new(b.id, c.id, EdgeKind::Forward),
+                DirectedEdge::new(c.id, a.id, EdgeKind::Backward),
+            ];
+            super::Topology::new_unvalidated(vec![a, b, c], edges).unwrap()
+        };
+
+        let t1 = build();
+        let t2 = build();
+
+        assert_eq!(t1.scc_id(a_id), t2.scc_id(a_id));
+        assert_eq!(t1.scc_id(b_id), t2.scc_id(b_id));
+        assert_eq!(t1.scc_id(c_id), t2.scc_id(c_id));
+    }
+
+    #[test]
+    fn test_scc_members_out_of_bounds_returns_none() {
+        let topology = {
+            let mut builder = TopologyBuilder::new();
+            let _src = builder.add_stage(Some("src".to_string()));
+            let _snk = builder.add_stage(Some("snk".to_string()));
+            builder.build_unchecked().unwrap()
+        };
+
+        assert_eq!(topology.scc_members(0), None);
+        assert_eq!(topology.scc_members(999), None);
+        assert_eq!(topology.scc_members(u32::MAX), None);
+    }
+
+    #[test]
+    fn test_is_in_cycle_agrees_with_scc_id() {
+        use crate::stages::StageInfo;
+        use crate::topology::{DirectedEdge, EdgeKind};
+
+        // Topology with both cycle and non-cycle stages:
+        // src -> entry -> iter -> snk
+        //          ^        |
+        //          +--------+
+        let src_id = crate::test_ids::next_stage_id();
+        let entry_id = crate::test_ids::next_stage_id();
+        let iter_id = crate::test_ids::next_stage_id();
+        let snk_id = crate::test_ids::next_stage_id();
+
+        let src = StageInfo::new(src_id, "src", crate::types::StageType::FiniteSource);
+        let entry = StageInfo::new(entry_id, "entry", crate::types::StageType::Transform);
+        let iter = StageInfo::new(iter_id, "iter", crate::types::StageType::Transform);
+        let snk = StageInfo::new(snk_id, "snk", crate::types::StageType::Sink);
+
+        let stages = vec![src.clone(), entry.clone(), iter.clone(), snk.clone()];
+        let edges = vec![
+            DirectedEdge::new(src.id, entry.id, EdgeKind::Forward),
+            DirectedEdge::new(entry.id, iter.id, EdgeKind::Forward),
+            DirectedEdge::new(iter.id, entry.id, EdgeKind::Backward),
+            DirectedEdge::new(entry.id, snk.id, EdgeKind::Forward),
+        ];
+
+        let topology = super::Topology::new_unvalidated(stages, edges).unwrap();
+
+        // The invariant: is_in_cycle and scc_id must always agree.
+        for stage in topology.stages() {
+            assert_eq!(
+                topology.is_in_cycle(stage.id),
+                topology.scc_id(stage.id).is_some(),
+                "is_in_cycle and scc_id disagree for stage {:?}",
+                stage.name
+            );
+        }
+
+        // Confirm the expected classification.
+        assert!(!topology.is_in_cycle(src.id));
+        assert!(topology.is_in_cycle(entry.id));
+        assert!(topology.is_in_cycle(iter.id));
+        assert!(!topology.is_in_cycle(snk.id));
+    }
 }
