@@ -609,8 +609,7 @@ mod tests {
             DirectedEdge::new(y.id, x.id, EdgeKind::Backward),
         ];
 
-        let topology =
-            super::Topology::new_unvalidated(vec![x.clone(), y.clone()], edges).unwrap();
+        let topology = super::Topology::new_unvalidated(vec![x.clone(), y.clone()], edges).unwrap();
 
         let scc_id = topology.scc_id(x.id).expect("x should be in SCC");
         assert_eq!(topology.scc_id(y.id), Some(scc_id));
