@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
+// https://obzenflow.dev
+
 //! Flow topology graph structures for ObzenFlow
 //!
 //! This crate provides graph topology data structures and algorithms for building
@@ -27,5 +31,5 @@ pub use stages::StageInfo;
 #[allow(deprecated)]
 pub use stages::StageMetadata;
 pub use topology::{DirectedEdge, EdgeKind, Topology, TopologyMetrics, ValidationLevel};
-pub use types::{StageId, StageRole, StageType};
+pub use types::{SccId, StageId, StageRole, StageType};
 pub use validation::{TopologyError, ValidationResult};

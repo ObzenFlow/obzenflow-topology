@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
+// https://obzenflow.dev
+
+pub mod scc_id;
 pub mod stage_type;
 
 use obzenflow_idkit::Id;
@@ -10,4 +15,5 @@ pub struct Stage;
 pub type StageId = Id<Stage>;
 
 // Re-export stage type enums
+pub use scc_id::SccId;
 pub use stage_type::{StageRole, StageType};

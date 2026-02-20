@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
+// https://obzenflow.dev
+
 // Common test utilities for topology tests
 use obzenflow_idkit::Id;
 use once_cell::sync::Lazy;
