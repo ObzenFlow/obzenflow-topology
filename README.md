@@ -45,6 +45,7 @@ Once built, you get cheap queries:
 * `upstream_stages` / `downstream_stages`
 * `edges()` and stage metadata lookup
 * `is_in_cycle` (SCC-based)
+* `scc_id(stage_id)` and `scc_members(scc_id)` for SCC partition queries
 * `metrics()` and `topology_fingerprint()`
 
 ### 3) Visualization helpers
@@ -59,7 +60,7 @@ Serde support is included by default for round-tripping stage/edge data through 
 
 ```toml
 [dependencies]
-obzenflow-topology = "0.2"
+obzenflow-topology = "0.3"
 ```
 
 The same dependency works for `wasm32-unknown-unknown` (no RNG required).
@@ -123,7 +124,7 @@ Semantic rules are intentionally restrictive (high level):
 * Forward (`|>`): Producer/Processor → Processor/Consumer
 * Backward (`<|`): Consumer/Processor → Processor
 
-Use `topology.is_in_cycle(stage)` when you need to render or reason about feedback loops.
+Use `topology.is_in_cycle(stage)` when you need to render or reason about feedback loops. For finer-grained cycle awareness, `scc_id(stage)` returns the SCC a stage belongs to, and `scc_members(scc_id)` returns the full member set. SCC identifiers are ULID-based and derived deterministically from the minimum `StageId` in each component, so they are stable across constructions of the same topology.
 
 ## IDs, ULIDs, `obzenflow-idkit`, and RNG
 
@@ -147,7 +148,7 @@ This crate is intentionally “boring” and predictable:
 
 * Stores stages in a `HashMap<StageId, StageInfo>` and edges in a `Vec<DirectedEdge>`.
 * Builds cached adjacency lists (`HashMap<StageId, HashSet<StageId>>`) for both downstream and upstream traversal.
-* Uses Tarjan SCC to compute cycle membership (`is_in_cycle`) in `O(V + E)`.
+* Uses Tarjan SCC to compute cycle membership and SCC partition identity in `O(V + E)`. Each SCC's `SccId` is derived from the minimum `StageId` in its member set.
 * Structural validation is a single pass over edges plus a connectivity check (`O(V + E)`).
 * Full validation adds reachability checks to ensure every stage is on a producer → consumer path.
 * `topology_fingerprint()` sorts IDs/edges by raw ULID bytes to produce a stable `u64` across runs/targets.

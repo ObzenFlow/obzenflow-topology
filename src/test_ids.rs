@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
+// https://obzenflow.dev
+
 // Test-only utilities for deterministic ID generation
 // This module is always compiled but only used in tests to avoid cfg complexity
 

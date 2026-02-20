@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-19
+
+### Added
+- **SCC partition API** for cycle-aware pipeline coordination (FLOWIP-051n, FLOWIP-051p)
+  - `SccId` type: phantom-typed ULID identifier for strongly connected components, derived deterministically from the minimum `StageId` in each SCC's member set
+  - `Topology::scc_id(stage_id) -> Option<SccId>`: returns the SCC a stage belongs to, or `None` for non-cycle stages
+  - `Topology::scc_members(scc_id) -> Option<&HashSet<StageId>>`: returns the full member set for a given SCC
+- **SCC identity is ULID-based and deterministic**: no sequential index allocation, consistent with every other identifier in the system
+- Re-exported `SccId` at crate root alongside `StageId`
+- Comprehensive test coverage for SCC partitioning: disjoint SCCs get distinct identifiers, DAGs have no SCCs, `is_in_cycle` and `scc_id` always agree, deterministic across constructions, out-of-bounds lookups return `None`
+- SPDX license headers on all `.rs` files
+
+### Changed
+- `Topology` now retains full SCC partition data (previously flattened to a `HashSet<StageId>`)
+- `is_in_cycle` reimplemented on top of cached SCC membership for consistency with the new API
+- Version bump from 0.2 to 0.3 (additive API, no breaking changes)
+
 ## [0.2.0] - 2025-12-03
 
 ### Breaking Changes

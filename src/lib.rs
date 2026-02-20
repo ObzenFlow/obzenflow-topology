@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
+// https://obzenflow.dev
+
 //! Flow topology graph structures for ObzenFlow
 //!
 //! This crate provides graph topology data structures and algorithms for building
