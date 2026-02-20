@@ -25,7 +25,7 @@ pub struct Topology {
     stages_in_cycles: HashSet<StageId>,
 
     // Strongly connected components (only SCCs with len > 1 are stored)
-    scc_members: Vec<HashSet<StageId>>,    // indexed by SccId
+    scc_members: HashMap<SccId, HashSet<StageId>>,
     stage_to_scc: HashMap<StageId, SccId>, // stage -> SccId
 }
 
@@ -66,23 +66,21 @@ impl Topology {
         }
 
         // Compute SCCs for cycle detection (FLOWIP-082g)
-        let mut scc_members: Vec<HashSet<StageId>> = compute_sccs(&stage_map, &downstream)
-            .into_iter()
-            .filter(|scc| scc.len() > 1)
-            .collect();
-
-        // Stabilise SCC identifiers by sorting by minimum stage id in each SCC.
-        scc_members.sort_by_key(|scc| scc.iter().copied().min().expect("non-empty SCC"));
-
+        // Each SCC's identity is derived from the minimum StageId in its
+        // member set, making it deterministic without sequential allocation.
         let mut stage_to_scc = HashMap::new();
-        for (scc_index, scc) in scc_members.iter().enumerate() {
-            let scc_id = SccId::new(
-                u32::try_from(scc_index)
-                    .map_err(|_| TopologyError::SccIndexOverflow { index: scc_index })?,
-            );
-            for stage_id in scc {
+        let mut scc_members: HashMap<SccId, HashSet<StageId>> = HashMap::new();
+
+        for scc in compute_sccs(&stage_map, &downstream) {
+            if scc.len() <= 1 {
+                continue;
+            }
+            let min_stage = scc.iter().copied().min().expect("non-empty SCC");
+            let scc_id = SccId::from_bytes(min_stage.to_bytes());
+            for stage_id in &scc {
                 stage_to_scc.insert(*stage_id, scc_id);
             }
+            scc_members.insert(scc_id, scc);
         }
         let stages_in_cycles = stage_to_scc.keys().copied().collect();
 
@@ -353,7 +351,7 @@ impl Topology {
 
     /// Returns the set of stages that belong to the given SCC identifier.
     pub fn scc_members(&self, scc_id: SccId) -> Option<&HashSet<StageId>> {
-        self.scc_members.get(scc_id.into_index())
+        self.scc_members.get(&scc_id)
     }
 }
 
@@ -650,8 +648,11 @@ mod tests {
             );
         }
 
-        // No SCCs exist, so even index 0 should return None.
-        assert_eq!(topology.scc_members(SccId::new(0)), None);
+        // No SCCs exist, so any fabricated SccId should return None.
+        assert_eq!(
+            topology.scc_members(SccId::from_bytes(0u128.to_be_bytes())),
+            None
+        );
     }
 
     #[test]
@@ -695,9 +696,18 @@ mod tests {
             builder.build_unchecked().unwrap()
         };
 
-        assert_eq!(topology.scc_members(SccId::new(0)), None);
-        assert_eq!(topology.scc_members(SccId::new(999)), None);
-        assert_eq!(topology.scc_members(SccId::new(u32::MAX)), None);
+        assert_eq!(
+            topology.scc_members(SccId::from_bytes(0u128.to_be_bytes())),
+            None
+        );
+        assert_eq!(
+            topology.scc_members(SccId::from_bytes(999u128.to_be_bytes())),
+            None
+        );
+        assert_eq!(
+            topology.scc_members(SccId::from_bytes(u128::MAX.to_be_bytes())),
+            None
+        );
     }
 
     #[test]
