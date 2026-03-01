@@ -1,25 +1,36 @@
 # Contributing to obzenflow-topology
 
-Thank you for your interest in contributing to obzenflow-topology! We welcome contributions from the community.
+Thanks for your interest in contributing!
 
 By participating, you agree to follow the Code of Conduct (`CODE_OF_CONDUCT.md`).
 
-## Getting Started
+## Sign-off (DCO)
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/obzenflow-topology.git`
-3. Create a feature branch: `git checkout -b feature/your-feature-name`
-4. Make your changes
-5. Run tests: `cargo test`
-6. Commit your changes: `git commit -am 'Add some feature'`
-7. Push to the branch: `git push origin feature/your-feature-name`
-8. Submit a pull request
+We use the **Developer Certificate of Origin (DCO)** instead of a Contributor License Agreement (CLA).
+
+- All commits in a PR must be signed off.
+- Sign off your commits with: `git commit -s`
+- The sign-off line looks like: `Signed-off-by: Your Name <your.email@example.com>`
+
+The full text is in `DCO.md`.
+
+### Fixing missing sign-offs
+
+- Amend the most recent commit: `git commit --amend -s`
+- Sign off all commits on your branch (interactive): `git rebase -i --signoff main`
+
+## Contribution provenance
+
+If you are employed, you are responsible for ensuring your employer's intellectual property policies permit your contribution. Many employment contracts include IP assignment clauses that may cover work done outside of office hours or on personal equipment.
+
+If your employer requires a corporate sign-off or approval for open source contributions, please obtain it before submitting a pull request.
+By signing off your commits (DCO), you attest you have the right to contribute the work under the project's license terms.
 
 ## Development Setup
 
 ### Prerequisites
 
-- Rust 1.70 or higher
+- Rust toolchain (see `.github/workflows/ci.yml` for the pinned version used in CI)
 - Cargo
 
 ### Building
@@ -33,62 +44,119 @@ rustup target add wasm32-unknown-unknown
 cargo build --target wasm32-unknown-unknown
 ```
 
-### Running Tests
+### Testing
 
+Run all tests:
 ```bash
-# Run all tests
 cargo test
+```
 
-# Run all tests (all features)
+Run all tests with all features:
+```bash
 cargo test --all-features
+```
 
-# Run tests with output
-cargo test -- --nocapture
-
-# Run specific test
+Run a specific test:
+```bash
 cargo test test_name
 ```
 
-### Code Style
+Run tests with output:
+```bash
+cargo test -- --nocapture
+```
 
-- Run `cargo fmt` before committing
-- Run `cargo clippy` to check for common issues
-- Follow Rust naming conventions
+## Code Style
+
+- Follow standard Rust conventions
+- Use `cargo fmt` to format your code
+- Use `cargo clippy` to catch common mistakes
 - Add documentation comments for public APIs
+- Include examples in doc comments where appropriate
 
-## Pull Request Guidelines
+## Testing Guidelines
 
-1. **Keep changes focused**: One feature or fix per PR
-2. **Write tests**: Add tests for new functionality
-3. **Update documentation**: Keep README and docs current
-4. **Follow existing patterns**: Match the codebase style
-5. **Write clear commit messages**: Explain what and why
+### Test Organization
 
-## Testing
-
-- Unit tests go in the same file as the code (`#[cfg(test)]` module)
+- Unit tests go in the same file as the code they test (in `mod tests`)
 - Integration tests go in the `tests/` directory
-- Aim for high test coverage of critical paths
+- Each test file should focus on a specific aspect of functionality
+- Use descriptive test names that explain what is being tested
+
+### Writing Tests
+
+- Test both success and failure cases
+- Test edge cases and boundary conditions
+- Ensure tests are deterministic (avoid relying on timing unless necessary)
 
 ## Documentation
 
-- All public APIs should have doc comments
-- Include examples in doc comments where helpful
-- Update README.md if adding new features
+- All public APIs must have documentation comments
+- Include examples in documentation where helpful
+- Update the README if you add new features
 
-## Code of Conduct
+## Pull Request Process
 
-Please be respectful and constructive in all interactions. We aim to maintain a welcoming and inclusive environment.
+1. **Before submitting:**
+   - Ensure all tests pass
+   - Run `cargo fmt` and `cargo clippy`
+   - Update documentation as needed
+
+2. **PR Description:**
+   - Clearly describe what the PR does
+   - Reference any related issues
+   - Include examples of usage if adding new features
+   - List any breaking changes
+
+3. **Review Process:**
+   - PRs require at least one review before merging
+   - Address reviewer feedback promptly
+   - Keep PRs focused - one feature/fix per PR
+
+## Types of Contributions
+
+### Bug Reports
+
+- Use the issue tracker to report bugs
+- Include a minimal reproducible example
+- Describe expected vs actual behavior
+- Include environment details (OS, Rust version)
+
+### Feature Requests
+
+- Open an issue to discuss new features first
+- Explain the use case and motivation
+
+### Code Contributions
+
+We especially welcome:
+- Performance improvements
+- Additional test coverage
+- Documentation improvements
+- Bug fixes
+- New examples
 
 ## Questions?
 
-If you have questions, feel free to:
-- Open an issue for discussion
-- Ask in the pull request
+Feel free to open an issue for any questions about contributing.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same terms as the project (MIT OR Apache-2.0).
+By contributing, you agree that your contributions will be licensed under the project's dual license (MIT OR Apache-2.0).
+
+## Source headers (SPDX)
+
+All Rust source files (`*.rs`) must start with an SPDX header block.
+
+Use:
+
+```rust
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
+// https://obzenflow.dev
+```
+
+Do not add individual names to per-file headers. Attribution lives in `LICENSE-MIT` and `LICENSE-APACHE`.
 
 ## Security
 
