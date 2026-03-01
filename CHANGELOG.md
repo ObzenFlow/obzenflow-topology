@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-03-01
+
+### Changed
+- **TRADEMARKS.md**: clarified trademark ownership, added explicit contribution/trademark separation
+- **CONTRIBUTING.md**: added DCO sign-off requirements, contribution provenance guidance for employed contributors, and SPDX header documentation
+- **CI**: added DCO sign-off verification as a merge gate on pull requests
+- **Licence files**: updated copyright year to 2025-2026
+
+### Added
+- `DCO.md` (Developer Certificate of Origin v1.1)
+
 ## [0.3.0] - 2026-02-19
 
 ### Added
