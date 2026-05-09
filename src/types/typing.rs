@@ -135,8 +135,15 @@ pub enum EdgeTypingLabelSource {
     DownstreamStreamType,
 }
 
+/// Render a captured Rust type name for UI display.
+///
+/// Strips Rust path qualifiers (`crate::module::Type` -> `Type`) so
+/// fully qualified `type_name::<T>()` strings collapse to the same form
+/// `stringify!($ty)` would produce. PascalCase type names are kept
+/// intact — splitting them on word boundaries makes tooltips
+/// unrecognisable against the underlying source code.
 fn format_display_name(name: &str) -> String {
-    split_camel_case(&strip_rust_path_qualifiers(name))
+    strip_rust_path_qualifiers(name)
 }
 
 fn strip_rust_path_qualifiers(name: &str) -> String {
@@ -165,41 +172,6 @@ fn push_final_path_segment(result: &mut String, token: &str) {
     result.push_str(token.rsplit("::").next().unwrap_or(token));
 }
 
-fn split_camel_case(name: &str) -> String {
-    let chars: Vec<char> = name.chars().collect();
-    let mut result = String::with_capacity(name.len());
-
-    for (index, ch) in chars.iter().copied().enumerate() {
-        if ch == '_' {
-            if !result.ends_with(' ') {
-                result.push(' ');
-            }
-            continue;
-        }
-
-        if index > 0 && should_insert_type_word_space(&chars, index) && !result.ends_with(' ') {
-            result.push(' ');
-        }
-        result.push(ch);
-    }
-
-    result
-}
-
-fn should_insert_type_word_space(chars: &[char], index: usize) -> bool {
-    let previous = chars[index - 1];
-    let current = chars[index];
-    let next = chars.get(index + 1).copied();
-
-    if !current.is_ascii_uppercase() {
-        return false;
-    }
-
-    previous.is_ascii_lowercase()
-        || previous.is_ascii_digit()
-        || (previous.is_ascii_uppercase() && next.is_some_and(|ch| ch.is_ascii_lowercase()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,32 +179,35 @@ mod tests {
     #[test]
     fn display_name_strips_path_qualifiers() {
         let hint = TypeHintInfo::exact("product_catalog::domain::EnrichedOrder");
-        assert_eq!(hint.display_name().as_deref(), Some("Enriched Order"));
+        assert_eq!(hint.display_name().as_deref(), Some("EnrichedOrder"));
     }
 
     #[test]
-    fn display_name_splits_camel_case() {
+    fn display_name_preserves_pascal_case() {
+        // Programmer-recognisable PascalCase is kept intact so the
+        // tooltip text matches the source-code spelling.
         let hint = TypeHintInfo::exact("EnrichedOrderWithPromo");
-        assert_eq!(
-            hint.display_name().as_deref(),
-            Some("Enriched Order With Promo"),
-        );
+        assert_eq!(hint.display_name().as_deref(), Some("EnrichedOrderWithPromo"));
     }
 
     #[test]
-    fn display_name_preserves_generics_conservatively() {
+    fn display_name_preserves_generics() {
         let hint = TypeHintInfo::exact("Vec<OrderEvent>");
-        let rendered = hint.display_name();
-        // The conservative formatter splits inside the generic arg.
-        assert_eq!(rendered.as_deref(), Some("Vec<Order Event>"));
+        assert_eq!(hint.display_name().as_deref(), Some("Vec<OrderEvent>"));
     }
 
     #[test]
-    fn display_name_splits_acronym_camel_case_boundary() {
-        // The conservative formatter inserts a space at the acronym/Word
-        // boundary: HTTPRequest -> HTTP Request.
+    fn display_name_preserves_acronyms() {
+        // Acronyms stay glued to neighbouring words; no synthesised
+        // space splits.
         let hint = TypeHintInfo::exact("HTTPRequest");
-        assert_eq!(hint.display_name().as_deref(), Some("HTTP Request"));
+        assert_eq!(hint.display_name().as_deref(), Some("HTTPRequest"));
+    }
+
+    #[test]
+    fn display_name_strips_paths_inside_generics() {
+        let hint = TypeHintInfo::exact("Vec<product_catalog::domain::OrderEvent>");
+        assert_eq!(hint.display_name().as_deref(), Some("Vec<OrderEvent>"));
     }
 
     #[test]
