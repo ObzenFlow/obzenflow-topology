@@ -61,9 +61,7 @@ fn build_three_stage_with_join() -> Topology {
     builder.reset_current();
     builder.add_edge(stream, join);
     builder.add_edge(catalog, join);
-    builder
-        .build_unchecked()
-        .expect("topology should build")
+    builder.build_unchecked().expect("topology should build")
 }
 
 #[test]
@@ -208,7 +206,10 @@ fn topology_round_trips_with_full_annotations() {
     let restored: Topology = serde_json::from_str(&json).expect("deserialise");
 
     // Top-level annotations preserved.
-    assert_eq!(restored.flow_name_annotation(), Some("promo_enrichment_flow"));
+    assert_eq!(
+        restored.flow_name_annotation(),
+        Some("promo_enrichment_flow")
+    );
     assert_eq!(restored.api_version(), Some("0.5"));
     assert_eq!(restored.subgraphs(), subgraph_registry.as_slice());
 
@@ -217,7 +218,10 @@ fn topology_round_trips_with_full_annotations() {
     assert_eq!(join_back.status, Some(StageStatus::Running));
     assert!(join_back.is_cycle_member.is_some());
     let typing = join_back.typing.as_ref().expect("join typing");
-    assert_eq!(typing.output_type, TypeHintInfo::exact("EnrichedOrderWithPromo"));
+    assert_eq!(
+        typing.output_type,
+        TypeHintInfo::exact("EnrichedOrderWithPromo")
+    );
     assert_eq!(typing.reference_type, TypeHintInfo::exact("Promotion"));
     let join_meta = join_back.join_metadata.as_ref().expect("join metadata");
     assert_eq!(join_meta.catalog_source_ids, vec![catalog_id]);
@@ -243,7 +247,10 @@ fn topology_round_trips_with_full_annotations() {
         stream_typing.label_source,
         EdgeTypingLabelSource::DownstreamStreamType
     );
-    assert_eq!(stream_typing.payload_type, TypeHintInfo::exact("EnrichedOrder"));
+    assert_eq!(
+        stream_typing.payload_type,
+        TypeHintInfo::exact("EnrichedOrder")
+    );
     let contracts = stream_edge.contracts.as_ref().expect("contracts");
     assert_eq!(contracts.len(), 1);
     assert_eq!(contracts[0].name, "TransportContract");
@@ -255,13 +262,19 @@ fn topology_round_trips_with_full_annotations() {
         .expect("catalog edge");
     let catalog_typing = catalog_edge.typing.as_ref().expect("catalog typing");
     assert_eq!(catalog_typing.role, EdgeTypingRole::Reference);
-    assert_eq!(catalog_typing.payload_type, TypeHintInfo::exact("Promotion"));
+    assert_eq!(
+        catalog_typing.payload_type,
+        TypeHintInfo::exact("Promotion")
+    );
 
     // Caches were rebuilt: structural fingerprint of the deserialised
     // topology matches the original (annotated) topology, proving that
     // annotations do not contribute to structural identity and that
     // SCC/adjacency caches are reconstructed faithfully on deserialise.
-    assert_eq!(restored.topology_fingerprint(), annotated.topology_fingerprint());
+    assert_eq!(
+        restored.topology_fingerprint(),
+        annotated.topology_fingerprint()
+    );
 }
 
 #[test]

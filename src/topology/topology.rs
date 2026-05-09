@@ -320,14 +320,14 @@ impl Topology {
         };
         use crate::types::StageType;
 
-        let forward_upstream_count: HashMap<StageId, usize> =
-            self.edges
-                .iter()
-                .filter(|e| e.kind == crate::topology::EdgeKind::Forward)
-                .fold(HashMap::new(), |mut acc, e| {
-                    *acc.entry(e.to).or_insert(0) += 1;
-                    acc
-                });
+        let forward_upstream_count: HashMap<StageId, usize> = self
+            .edges
+            .iter()
+            .filter(|e| e.kind == crate::topology::EdgeKind::Forward)
+            .fold(HashMap::new(), |mut acc, e| {
+                *acc.entry(e.to).or_insert(0) += 1;
+                acc
+            });
 
         for edge in self.edges.iter_mut() {
             if edge.kind != crate::topology::EdgeKind::Forward {
@@ -344,9 +344,10 @@ impl Topology {
 
             // Join-leg classification.
             if downstream.stage_type == StageType::Join {
-                if let (Some(meta), Some(typing)) =
-                    (downstream.join_metadata.as_ref(), downstream.typing.as_ref())
-                {
+                if let (Some(meta), Some(typing)) = (
+                    downstream.join_metadata.as_ref(),
+                    downstream.typing.as_ref(),
+                ) {
                     edge.typing = if meta.catalog_source_ids.contains(&edge.from) {
                         edge_typing_from_hint(
                             EdgeTypingRole::Reference,
@@ -383,16 +384,13 @@ impl Topology {
             // Fall back to downstream input_type when this is the unique
             // forward upstream.
             if forward_upstream_count.get(&edge.to).copied().unwrap_or(0) == 1 {
-                edge.typing = downstream
-                    .typing
-                    .as_ref()
-                    .and_then(|t| {
-                        edge_typing_from_hint(
-                            EdgeTypingRole::Input,
-                            EdgeTypingLabelSource::DownstreamInputType,
-                            &t.input_type,
-                        )
-                    });
+                edge.typing = downstream.typing.as_ref().and_then(|t| {
+                    edge_typing_from_hint(
+                        EdgeTypingRole::Input,
+                        EdgeTypingLabelSource::DownstreamInputType,
+                        &t.input_type,
+                    )
+                });
                 continue;
             }
 

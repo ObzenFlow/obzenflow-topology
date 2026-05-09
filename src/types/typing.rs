@@ -187,7 +187,10 @@ mod tests {
         // Programmer-recognisable PascalCase is kept intact so the
         // tooltip text matches the source-code spelling.
         let hint = TypeHintInfo::exact("EnrichedOrderWithPromo");
-        assert_eq!(hint.display_name().as_deref(), Some("EnrichedOrderWithPromo"));
+        assert_eq!(
+            hint.display_name().as_deref(),
+            Some("EnrichedOrderWithPromo")
+        );
     }
 
     #[test]

@@ -4,8 +4,8 @@
 
 use super::StageId;
 use crate::types::{
-    JoinMetadataInfo, MiddlewareInfo, StageRole, StageStatus, StageSubgraphMembership,
-    StageTypingInfo, StageType,
+    JoinMetadataInfo, MiddlewareInfo, StageRole, StageStatus, StageSubgraphMembership, StageType,
+    StageTypingInfo,
 };
 use serde::{Deserialize, Serialize};
 
