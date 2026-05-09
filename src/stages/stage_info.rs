@@ -25,10 +25,6 @@ pub struct StageInfo {
     /// Semantic stage type used for validation and runtime coordination
     pub stage_type: StageType,
 
-    /// Optional extension point for additional metadata (legacy).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extensions: Option<StageExtensions>,
-
     /// Coarse runtime lifecycle state (FLOWIP-059).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<StageStatus>,
@@ -66,7 +62,6 @@ impl StageInfo {
             id,
             name: name.into(),
             stage_type,
-            extensions: None,
             status: None,
             role: None,
             is_cycle_member: None,
@@ -116,33 +111,4 @@ impl StageInfo {
         self.subgraph = Some(subgraph);
         self
     }
-}
-
-/// Future-proofing: extensible metadata container for stages.
-///
-/// Predates the typed annotation fields on `StageInfo`. New annotations
-/// should be added as typed fields directly; this container is retained
-/// for forward-compat with existing payloads.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct StageExtensions {
-    /// Middleware configuration (rate limiters, circuit breakers, retry policies)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub middleware: Option<serde_json::Value>,
-
-    /// UI-specific hints (custom icons, colors, grouping)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ui_hints: Option<serde_json::Value>,
-}
-
-/// Legacy metadata type - use StageInfo + StageExtensions instead
-#[deprecated(
-    since = "0.2.0",
-    note = "Use StageInfo with optional StageExtensions instead"
-)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StageMetadata {
-    pub id: StageId,
-    pub name: String,
-    pub stage_type: StageType,
-    pub description: Option<String>,
 }

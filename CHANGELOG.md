@@ -2,42 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ## [0.4.0] - 2026-05-08
 
-### Added (FLOWIP-114b — canonical topology)
+The canonical `Topology` is now the single source of truth for the
+`/api/topology` wire contract. `obzenflow_infra` and `obzen-flow-ui` no
+longer maintain private response DTOs; both serialise and deserialise
+the canonical type directly. (FLOWIP-114b)
 
-`Topology`, `StageInfo`, and `DirectedEdge` now carry the optional annotation fields needed for `/api/topology` directly. ObzenFlow infra and `obzen-flow-ui` no longer need parallel response/snapshot DTOs; both can serialise/deserialise the canonical `Topology` value.
+### Added
 
-- **`Topology` is `Serialize` + `Deserialize`.** A private wire shadow struct carries the inputs (`flow_name`, `api_version`, `stages`, `edges`, `subgraphs`); caches (`downstream`, `upstream`, SCC tables) are reconstructed via `Topology::new_unvalidated` on deserialise. Sorted-by-id output is deterministic.
-- **`Topology` top-level annotations.** `flow_name` (overrides the source-derived `flow_name()`), `api_version`, and `subgraphs: Vec<TopologySubgraphInfo>`. Setters: `with_flow_name`, `with_api_version`, `with_subgraphs`. Annotation accessors: `flow_name_annotation()`, `api_version()`, `subgraphs()`.
-- **`StageInfo` annotation fields.** `status: Option<StageStatus>`, `role: Option<StageRole>`, `is_cycle_member: Option<bool>`, `middleware: Option<MiddlewareInfo>`, `join_metadata: Option<JoinMetadataInfo>`, `typing: Option<StageTypingInfo>`, `subgraph: Option<StageSubgraphMembership>`. Fluent `with_*` setters for each. `StageInfo` is now `#[non_exhaustive]`.
-- **`DirectedEdge` annotation fields.** `events_per_sec: Option<f64>`, `contracts: Option<Vec<ContractInfo>>`, `typing: Option<EdgeTypingInfo>`. `DirectedEdge` is now `#[non_exhaustive]`. `Copy` is dropped (the `Vec<ContractInfo>` makes it impossible). `PartialEq`, `Eq`, and `Hash` are implemented manually so two edges with the same `(from, to, kind)` triple compare and hash equally regardless of annotation contents — preserves the existing dedup invariant.
-- **New canonical annotation types** in `obzenflow_topology::types`:
-  - `TypeHintInfo` (`Unspecified` | `Exact { name }` | `Mixed`) with `display_name()` for v0.5 conservative formatter
-  - `StageTypingInfo`, `EdgeTypingInfo`, `EdgeTypingRole`, `EdgeTypingLabelSource`
-  - `JoinMetadataInfo`
-  - `MiddlewareInfo`, `CircuitBreakerInfo`, `RateLimiterInfo`, `RetryInfo`, `OpenPolicy`, `BackoffStrategy`
-  - `ContractInfo`
-  - `StageStatus`
-  - `StageSubgraphMembership`, `TopologySubgraphInfo`, `SubgraphInternalEdge`
-- `Topology::populate_derived_stage_annotations(self) -> Self` populates `is_cycle_member` and `role` annotations on every stage.
-- `Topology::replace_stage_info(&mut self, info)` allows infrastructure/runtime callers to attach annotations to a stage after the topology has been validated.
+- `Topology`, `StageInfo`, and `DirectedEdge` now implement `Serialize` and `Deserialize`. Cycle and SCC caches are reconstructed on deserialise; output is sorted by stage id for determinism.
+- `Topology` top-level annotations: `flow_name`, `api_version`, `subgraphs: Vec<TopologySubgraphInfo>`, with fluent `with_*` setters.
+- `StageInfo` annotation fields: `status`, `role`, `is_cycle_member`, `middleware`, `join_metadata`, `typing`, `subgraph`. All `Option<_>`, all with fluent `with_*` setters.
+- `DirectedEdge` annotation fields: `contracts`, `typing`. Both `Option<_>`, both with fluent `with_*` setters.
+- Annotation types under `obzenflow_topology::types`:
+  - **Typing**: `TypeHintInfo`, `StageTypingInfo`, `EdgeTypingInfo`, `EdgeTypingRole`, `EdgeTypingLabelSource`.
+  - **Middleware**: `MiddlewareInfo`, `CircuitBreakerInfo`, `RateLimiterInfo`, `RetryInfo`, `OpenPolicy`, `BackoffStrategy`.
+  - **Other**: `JoinMetadataInfo`, `ContractInfo`, `StageStatus`, `StageSubgraphMembership`, `TopologySubgraphInfo`, `SubgraphInternalEdge`.
+- `Topology::populate_derived_stage_annotations()` sets `role` and `is_cycle_member` on every stage from the cached SCC.
+- `Topology::derive_edge_typings()` folds stage typing and join metadata into per-edge `EdgeTypingInfo`.
+- `Topology::replace_stage_info()` lets infra and runtime attach annotations after validation.
+- `TypeHintInfo::display_name()` returns the path-stripped form for UI rendering. Type names are rendered as written in source code; the helper strips Rust path qualifiers and nothing else.
 
 ### Changed
 
-- `StageType`, `StageRole`, and `EdgeKind` enums now serialise via `#[serde(rename_all = "snake_case")]`. Previously these emitted PascalCase via the default serde representation; the `as_str()` outputs (which were the on-wire form everywhere they mattered) are now also the serde form, so direct serde and `as_str()` agree.
-- `Topology::flow_name()` prefers the explicit `flow_name` annotation when set, otherwise falls back to source-derived naming.
+- `StageType`, `StageRole`, and `EdgeKind` serialise via `#[serde(rename_all = "snake_case")]`. The serde form now matches `as_str()` output.
+- `Topology::flow_name()` prefers the explicit `flow_name` annotation when set, falling back to source-derived naming.
+- `StageInfo` and `DirectedEdge` are now `#[non_exhaustive]`.
+- `DirectedEdge` is no longer `Copy`. `PartialEq`, `Eq`, and `Hash` are implemented manually on `(from, to, kind)` so the existing dedup invariant is preserved across annotated edges.
+
+### Removed
+
+- `StageMetadata` struct and re-exports. Deprecated since 0.2.0; use `StageInfo` directly.
+- `StageExtensions` struct and the `extensions: Option<StageExtensions>` field on `StageInfo`. The `serde_json::Value` blob is replaced by typed annotation fields (`middleware: Option<MiddlewareInfo>`, etc.).
+- `EdgeExtensions` struct. Was a dangling re-export, never wired as a `DirectedEdge` field; replaced by typed `contracts` and `typing` annotations.
+- `events_per_sec: Option<f64>` field on `DirectedEdge`. Always `None` from this crate; runtime metrics are exported via `/metrics`.
+- `Shape::stage_type()` helper. Unused; classification lives on `StageType`.
 
 ### Migration
 
-- Direct struct-literal construction of `StageInfo` or `DirectedEdge` outside this crate must use `StageInfo::new(...)` / `DirectedEdge::new(...)` plus `.with_*` setters because of `#[non_exhaustive]`. Existing in-crate construction is unchanged.
-- Any consumer that relied on `DirectedEdge: Copy` must clone instead. References were the dominant pattern, so most sites are unaffected.
-- A consumer that serialised `StageType` / `StageRole` / `EdgeKind` directly via serde now sees snake_case strings instead of PascalCase. Implementations that read via `as_str()` are unchanged.
+- Direct struct-literal construction of `StageInfo` or `DirectedEdge` outside this crate must use `StageInfo::new(...)` / `DirectedEdge::new(...)` plus `.with_*` setters, due to `#[non_exhaustive]`.
+- Consumers that relied on `DirectedEdge: Copy` must clone instead. References were the dominant pattern; most call sites are unaffected.
+- Consumers that serialised `StageType`, `StageRole`, or `EdgeKind` directly via serde now see snake_case strings instead of PascalCase. Implementations that read via `as_str()` are unchanged.
+- Consumers of the removed `StageExtensions` and `EdgeExtensions` blobs should populate the typed annotation fields (`MiddlewareInfo`, `ContractInfo`, `EdgeTypingInfo`, `StageTypingInfo`) instead.
 
 ## [0.3.1] - 2026-03-01
 

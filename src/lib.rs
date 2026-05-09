@@ -34,8 +34,6 @@ pub use test_ids::next_stage_id;
 // Re-export core types for convenience
 pub use builder::TopologyBuilder;
 pub use stages::StageInfo;
-#[allow(deprecated)]
-pub use stages::StageMetadata;
 pub use topology::{DirectedEdge, EdgeKind, Topology, TopologyMetrics, ValidationLevel};
 pub use types::{
     BackoffStrategy, CircuitBreakerInfo, ContractInfo, EdgeTypingInfo, EdgeTypingLabelSource,

@@ -26,19 +26,6 @@ impl std::fmt::Display for EdgeKind {
     }
 }
 
-/// Legacy extension point for edge metadata.
-///
-/// Predates the typed annotation fields on `DirectedEdge`. New annotations
-/// should be added as typed fields directly; this container is retained
-/// for forward-compat with existing payloads.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct EdgeExtensions {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub contract: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ui_hints: Option<serde_json::Value>,
-}
-
 /// Directed edge - explicit flow direction between stages.
 ///
 /// Structural fields (`from`, `to`, `kind`) drive validation and traversal.
@@ -56,11 +43,6 @@ pub struct DirectedEdge {
     pub to: StageId,
     pub kind: EdgeKind,
 
-    /// Legacy throughput field, always `None` from this crate. Runtime
-    /// metrics are exported via `/metrics`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub events_per_sec: Option<f64>,
-
     /// Structural contracts attached to this edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contracts: Option<Vec<ContractInfo>>,
@@ -76,15 +58,9 @@ impl DirectedEdge {
             from,
             to,
             kind,
-            events_per_sec: None,
             contracts: None,
             typing: None,
         }
-    }
-
-    pub fn with_events_per_sec(mut self, events_per_sec: f64) -> Self {
-        self.events_per_sec = Some(events_per_sec);
-        self
     }
 
     pub fn with_contracts(mut self, contracts: Vec<ContractInfo>) -> Self {
