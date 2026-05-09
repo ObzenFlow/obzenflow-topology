@@ -298,6 +298,126 @@ impl Topology {
         self.stages.insert(info.id, info)
     }
 
+    /// Derive per-edge `typing` annotations from the already-attached stage
+    /// `typing` and `join_metadata` annotations (FLOWIP-114b).
+    ///
+    /// For forward edges:
+    ///
+    /// - When the downstream stage is a join with `join_metadata` populated,
+    ///   the upstream is classified as `reference` (using the join's
+    ///   `reference_type`) or `stream` (using the join's `stream_type`).
+    /// - Otherwise the edge prefers the upstream stage's `output_type`. If
+    ///   the upstream lacks typing and the downstream has exactly one
+    ///   forward upstream, the downstream's `input_type` is used as a
+    ///   fallback.
+    /// - Edges with no derivable label, and all backward edges, are left
+    ///   with `typing = None`.
+    ///
+    /// Existing edge `typing` annotations are overwritten.
+    pub fn derive_edge_typings(mut self) -> Self {
+        use crate::types::typing::{
+            EdgeTypingInfo, EdgeTypingLabelSource, EdgeTypingRole, TypeHintInfo,
+        };
+        use crate::types::StageType;
+
+        let forward_upstream_count: HashMap<StageId, usize> =
+            self.edges
+                .iter()
+                .filter(|e| e.kind == crate::topology::EdgeKind::Forward)
+                .fold(HashMap::new(), |mut acc, e| {
+                    *acc.entry(e.to).or_insert(0) += 1;
+                    acc
+                });
+
+        for edge in self.edges.iter_mut() {
+            if edge.kind != crate::topology::EdgeKind::Forward {
+                edge.typing = None;
+                continue;
+            }
+
+            let upstream = self.stages.get(&edge.from);
+            let downstream = self.stages.get(&edge.to);
+            let Some(downstream) = downstream else {
+                edge.typing = None;
+                continue;
+            };
+
+            // Join-leg classification.
+            if downstream.stage_type == StageType::Join {
+                if let (Some(meta), Some(typing)) =
+                    (downstream.join_metadata.as_ref(), downstream.typing.as_ref())
+                {
+                    edge.typing = if meta.catalog_source_ids.contains(&edge.from) {
+                        edge_typing_from_hint(
+                            EdgeTypingRole::Reference,
+                            EdgeTypingLabelSource::DownstreamReferenceType,
+                            &typing.reference_type,
+                        )
+                    } else if meta.stream_source_ids.contains(&edge.from) {
+                        edge_typing_from_hint(
+                            EdgeTypingRole::Stream,
+                            EdgeTypingLabelSource::DownstreamStreamType,
+                            &typing.stream_type,
+                        )
+                    } else {
+                        None
+                    };
+                } else {
+                    edge.typing = None;
+                }
+                continue;
+            }
+
+            // Ordinary forward edge: prefer upstream output_type.
+            if let Some(upstream_typing) = upstream.and_then(|s| s.typing.as_ref()) {
+                if let Some(typing) = edge_typing_from_hint(
+                    EdgeTypingRole::Input,
+                    EdgeTypingLabelSource::UpstreamOutputType,
+                    &upstream_typing.output_type,
+                ) {
+                    edge.typing = Some(typing);
+                    continue;
+                }
+            }
+
+            // Fall back to downstream input_type when this is the unique
+            // forward upstream.
+            if forward_upstream_count.get(&edge.to).copied().unwrap_or(0) == 1 {
+                edge.typing = downstream
+                    .typing
+                    .as_ref()
+                    .and_then(|t| {
+                        edge_typing_from_hint(
+                            EdgeTypingRole::Input,
+                            EdgeTypingLabelSource::DownstreamInputType,
+                            &t.input_type,
+                        )
+                    });
+                continue;
+            }
+
+            edge.typing = None;
+        }
+
+        // Inline so the topology crate does not introduce a public helper.
+        fn edge_typing_from_hint(
+            role: EdgeTypingRole,
+            label_source: EdgeTypingLabelSource,
+            payload_type: &TypeHintInfo,
+        ) -> Option<EdgeTypingInfo> {
+            if matches!(payload_type, TypeHintInfo::Unspecified) {
+                return None;
+            }
+            Some(EdgeTypingInfo::new(
+                role,
+                label_source,
+                payload_type.clone(),
+            ))
+        }
+
+        self
+    }
+
     /// Get topology fingerprint - deterministic hash of structure and semantics
     ///
     /// Includes: stage IDs, names, types, edge endpoints, and edge kinds.

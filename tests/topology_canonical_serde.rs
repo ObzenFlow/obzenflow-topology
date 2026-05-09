@@ -39,12 +39,25 @@ fn build_minimal_topology() -> Topology {
 }
 
 fn build_three_stage_with_join() -> Topology {
+    use obzenflow_topology::StageType;
     let mut builder = TopologyBuilder::new();
-    let stream = builder.add_stage(Some("orders".to_string()));
+    let stream = builder.add_stage_with_id(
+        obzenflow_topology::StageId::from_bytes(2_001_u128.to_be_bytes()),
+        Some("orders".to_string()),
+        StageType::FiniteSource,
+    );
     builder.reset_current();
-    let catalog = builder.add_stage(Some("promotions".to_string()));
+    let catalog = builder.add_stage_with_id(
+        obzenflow_topology::StageId::from_bytes(2_002_u128.to_be_bytes()),
+        Some("promotions".to_string()),
+        StageType::FiniteSource,
+    );
     builder.reset_current();
-    let join = builder.add_stage(Some("promo_enriched".to_string()));
+    let join = builder.add_stage_with_id(
+        obzenflow_topology::StageId::from_bytes(2_003_u128.to_be_bytes()),
+        Some("promo_enriched".to_string()),
+        StageType::Join,
+    );
     builder.reset_current();
     builder.add_edge(stream, join);
     builder.add_edge(catalog, join);
@@ -335,6 +348,71 @@ fn topology_wire_omits_default_annotations() {
     assert!(!json.contains("\"status\""));
     assert!(!json.contains("\"role\""));
     assert!(!json.contains("\"typing\""));
+}
+
+#[test]
+fn derive_edge_typings_classifies_join_legs_and_forwards() {
+    let topology = build_three_stage_with_join();
+    let stage_ids: Vec<_> = topology.stages().map(|s| s.id).collect();
+    let stream_id = stage_ids
+        .iter()
+        .copied()
+        .find(|id| topology.stage_name(*id) == Some("orders"))
+        .unwrap();
+    let catalog_id = stage_ids
+        .iter()
+        .copied()
+        .find(|id| topology.stage_name(*id) == Some("promotions"))
+        .unwrap();
+    let join_id = stage_ids
+        .iter()
+        .copied()
+        .find(|id| topology.stage_name(*id) == Some("promo_enriched"))
+        .unwrap();
+
+    let mut stages: Vec<StageInfo> = topology.stages().cloned().collect();
+    if let Some(info) = stages.iter_mut().find(|s| s.id == join_id) {
+        *info = info
+            .clone()
+            .with_join_metadata(JoinMetadataInfo::new(vec![catalog_id], vec![stream_id]))
+            .with_typing(StageTypingInfo {
+                input_type: TypeHintInfo::Unspecified,
+                output_type: TypeHintInfo::exact("EnrichedOrderWithPromo"),
+                boundary_in_type: TypeHintInfo::Unspecified,
+                boundary_out_type: TypeHintInfo::Unspecified,
+                reference_type: TypeHintInfo::exact("Promotion"),
+                stream_type: TypeHintInfo::exact("EnrichedOrder"),
+                is_placeholder: false,
+                placeholder_message: None,
+            });
+    }
+
+    let edges: Vec<DirectedEdge> = topology.edges().to_vec();
+    let derived = Topology::new_unvalidated(stages, edges)
+        .expect("rebuild")
+        .derive_edge_typings();
+
+    let catalog_edge = derived
+        .edges()
+        .iter()
+        .find(|e| e.from == catalog_id && e.to == join_id)
+        .unwrap();
+    let typing = catalog_edge.typing.as_ref().expect("catalog edge typing");
+    assert_eq!(typing.role, EdgeTypingRole::Reference);
+    assert_eq!(
+        typing.label_source,
+        EdgeTypingLabelSource::DownstreamReferenceType
+    );
+    assert_eq!(typing.payload_type, TypeHintInfo::exact("Promotion"));
+
+    let stream_edge = derived
+        .edges()
+        .iter()
+        .find(|e| e.from == stream_id && e.to == join_id)
+        .unwrap();
+    let typing = stream_edge.typing.as_ref().expect("stream edge typing");
+    assert_eq!(typing.role, EdgeTypingRole::Stream);
+    assert_eq!(typing.payload_type, TypeHintInfo::exact("EnrichedOrder"));
 }
 
 #[test]
