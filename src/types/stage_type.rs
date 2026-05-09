@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// Stage type classification for pipeline coordination
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StageType {
     /// Source that will eventually complete (e.g., file reader, bounded collection)
     FiniteSource,
@@ -84,6 +85,7 @@ impl std::fmt::Display for StageType {
 
 /// StageRole captures connection semantics (producer/processor/consumer)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StageRole {
     /// Generates events only (Sources) - no incoming edges
     Producer,

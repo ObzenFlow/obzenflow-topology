@@ -7,6 +7,12 @@
 //! This crate provides graph topology data structures and algorithms for building
 //! and validating flow-based pipelines. It's designed to be used both in backend
 //! services and frontend applications (including WASM targets).
+//!
+//! As of 0.4 (FLOWIP-114b), `Topology`, `StageInfo`, and `DirectedEdge` carry
+//! optional annotation fields (status, role, cycle membership, join metadata,
+//! middleware, contracts, stage typing, edge typing, subgraph membership)
+//! alongside the structural graph. Validation, SCC computation, and traversal
+//! continue to read only the structural fields.
 
 #![allow(clippy::module_inception)]
 #![allow(clippy::result_large_err)]
@@ -31,5 +37,10 @@ pub use stages::StageInfo;
 #[allow(deprecated)]
 pub use stages::StageMetadata;
 pub use topology::{DirectedEdge, EdgeKind, Topology, TopologyMetrics, ValidationLevel};
-pub use types::{SccId, StageId, StageRole, StageType};
+pub use types::{
+    BackoffStrategy, CircuitBreakerInfo, ContractInfo, EdgeTypingInfo, EdgeTypingLabelSource,
+    EdgeTypingRole, JoinMetadataInfo, MiddlewareInfo, OpenPolicy, RateLimiterInfo, RetryInfo,
+    SccId, StageId, StageRole, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
+    SubgraphInternalEdge, TopologySubgraphInfo, TypeHintInfo,
+};
 pub use validation::{TopologyError, ValidationResult};

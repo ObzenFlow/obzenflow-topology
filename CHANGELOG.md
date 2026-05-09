@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-08
+
+### Added (FLOWIP-114b — canonical topology)
+
+`Topology`, `StageInfo`, and `DirectedEdge` now carry the optional annotation fields needed for `/api/topology` directly. ObzenFlow infra and `obzen-flow-ui` no longer need parallel response/snapshot DTOs; both can serialise/deserialise the canonical `Topology` value.
+
+- **`Topology` is `Serialize` + `Deserialize`.** A private wire shadow struct carries the inputs (`flow_name`, `api_version`, `stages`, `edges`, `subgraphs`); caches (`downstream`, `upstream`, SCC tables) are reconstructed via `Topology::new_unvalidated` on deserialise. Sorted-by-id output is deterministic.
+- **`Topology` top-level annotations.** `flow_name` (overrides the source-derived `flow_name()`), `api_version`, and `subgraphs: Vec<TopologySubgraphInfo>`. Setters: `with_flow_name`, `with_api_version`, `with_subgraphs`. Annotation accessors: `flow_name_annotation()`, `api_version()`, `subgraphs()`.
+- **`StageInfo` annotation fields.** `status: Option<StageStatus>`, `role: Option<StageRole>`, `is_cycle_member: Option<bool>`, `middleware: Option<MiddlewareInfo>`, `join_metadata: Option<JoinMetadataInfo>`, `typing: Option<StageTypingInfo>`, `subgraph: Option<StageSubgraphMembership>`. Fluent `with_*` setters for each. `StageInfo` is now `#[non_exhaustive]`.
+- **`DirectedEdge` annotation fields.** `events_per_sec: Option<f64>`, `contracts: Option<Vec<ContractInfo>>`, `typing: Option<EdgeTypingInfo>`. `DirectedEdge` is now `#[non_exhaustive]`. `Copy` is dropped (the `Vec<ContractInfo>` makes it impossible). `PartialEq`, `Eq`, and `Hash` are implemented manually so two edges with the same `(from, to, kind)` triple compare and hash equally regardless of annotation contents — preserves the existing dedup invariant.
+- **New canonical annotation types** in `obzenflow_topology::types`:
+  - `TypeHintInfo` (`Unspecified` | `Exact { name }` | `Mixed`) with `display_name()` for v0.5 conservative formatter
+  - `StageTypingInfo`, `EdgeTypingInfo`, `EdgeTypingRole`, `EdgeTypingLabelSource`
+  - `JoinMetadataInfo`
+  - `MiddlewareInfo`, `CircuitBreakerInfo`, `RateLimiterInfo`, `RetryInfo`, `OpenPolicy`, `BackoffStrategy`
+  - `ContractInfo`
+  - `StageStatus`
+  - `StageSubgraphMembership`, `TopologySubgraphInfo`, `SubgraphInternalEdge`
+- `Topology::populate_derived_stage_annotations(self) -> Self` populates `is_cycle_member` and `role` annotations on every stage.
+- `Topology::replace_stage_info(&mut self, info)` allows infrastructure/runtime callers to attach annotations to a stage after the topology has been validated.
+
+### Changed
+
+- `StageType`, `StageRole`, and `EdgeKind` enums now serialise via `#[serde(rename_all = "snake_case")]`. Previously these emitted PascalCase via the default serde representation; the `as_str()` outputs (which were the on-wire form everywhere they mattered) are now also the serde form, so direct serde and `as_str()` agree.
+- `Topology::flow_name()` prefers the explicit `flow_name` annotation when set, otherwise falls back to source-derived naming.
+
+### Migration
+
+- Direct struct-literal construction of `StageInfo` or `DirectedEdge` outside this crate must use `StageInfo::new(...)` / `DirectedEdge::new(...)` plus `.with_*` setters because of `#[non_exhaustive]`. Existing in-crate construction is unchanged.
+- Any consumer that relied on `DirectedEdge: Copy` must clone instead. References were the dominant pattern, so most sites are unaffected.
+- A consumer that serialised `StageType` / `StageRole` / `EdgeKind` directly via serde now sees snake_case strings instead of PascalCase. Implementations that read via `as_str()` are unchanged.
+
 ## [0.3.1] - 2026-03-01
 
 ### Changed
