@@ -4,11 +4,12 @@
 
 use crate::stages::{StageId, StageInfo};
 use crate::topology::DirectedEdge;
-use crate::types::{SccId, StageRole};
+use crate::types::{SccId, StageRole, TopologySubgraphInfo};
 use crate::validation::{
     compute_sccs, validate_all_connections, validate_edges_and_structure,
     validate_topology_structure, TopologyError, ValidationResult,
 };
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
 
 /// Complete topology with efficient traversal
@@ -31,6 +32,13 @@ pub struct Topology {
     // Strongly connected components (only SCCs with len > 1 are stored)
     scc_members: HashMap<SccId, HashSet<StageId>>,
     stage_to_scc: HashMap<StageId, SccId>, // stage -> SccId
+
+    // Optional top-level annotations (FLOWIP-114b). These are populated by
+    // ObzenFlow runtime/infra during flow build and ignored by validation,
+    // SCC computation, and traversal.
+    flow_name_annotation: Option<String>,
+    api_version: Option<String>,
+    subgraphs: Vec<TopologySubgraphInfo>,
 }
 
 /// Validation level for topology semantics
@@ -96,6 +104,9 @@ impl Topology {
             stages_in_cycles,
             scc_members,
             stage_to_scc,
+            flow_name_annotation: None,
+            api_version: None,
+            subgraphs: Vec::new(),
         })
     }
 
@@ -211,8 +222,13 @@ impl Topology {
             .collect()
     }
 
-    /// Get flow name (derived from source stage if single source)
+    /// Get flow name. Prefers the `flow_name` annotation if set, otherwise
+    /// falls back to a name derived from the unique source stage (or
+    /// `"multi_source_flow"` when there is no unique source).
     pub fn flow_name(&self) -> String {
+        if let Some(name) = &self.flow_name_annotation {
+            return name.clone();
+        }
         let sources = self.source_stages();
         if sources.len() == 1 {
             if let Some(stage_info) = self.stages.get(&sources[0]) {
@@ -220,6 +236,184 @@ impl Topology {
             }
         }
         "multi_source_flow".to_string()
+    }
+
+    /// Get the explicit `flow_name` annotation, if any.
+    pub fn flow_name_annotation(&self) -> Option<&str> {
+        self.flow_name_annotation.as_deref()
+    }
+
+    /// Get the `api_version` annotation, if any.
+    pub fn api_version(&self) -> Option<&str> {
+        self.api_version.as_deref()
+    }
+
+    /// Get the registered logical subgraphs.
+    pub fn subgraphs(&self) -> &[TopologySubgraphInfo] {
+        &self.subgraphs
+    }
+
+    /// Set the explicit flow name annotation.
+    pub fn with_flow_name(mut self, name: impl Into<String>) -> Self {
+        self.flow_name_annotation = Some(name.into());
+        self
+    }
+
+    /// Set the API version annotation (e.g. `"0.5"`).
+    pub fn with_api_version(mut self, version: impl Into<String>) -> Self {
+        self.api_version = Some(version.into());
+        self
+    }
+
+    /// Set the registered logical subgraphs.
+    pub fn with_subgraphs(mut self, subgraphs: Vec<TopologySubgraphInfo>) -> Self {
+        self.subgraphs = subgraphs;
+        self
+    }
+
+    /// Populate `is_cycle_member` and `role` annotations on every stage.
+    ///
+    /// `is_cycle_member` is read from the cached SCC membership; `role` is
+    /// derived from `stage_type.role()`. Annotations already set are
+    /// overwritten so this method is idempotent.
+    pub fn populate_derived_stage_annotations(mut self) -> Self {
+        let cycle_members: HashSet<StageId> = self.stages_in_cycles.iter().copied().collect();
+        for (id, info) in self.stages.iter_mut() {
+            info.is_cycle_member = Some(cycle_members.contains(id));
+            info.role = Some(info.stage_type.role());
+        }
+        self
+    }
+
+    /// Replace the `StageInfo` for one stage. Used by ObzenFlow's flow
+    /// build path to attach annotations after the topology has been
+    /// constructed and validated.
+    ///
+    /// Returns the previous `StageInfo` if the id existed, `None` otherwise.
+    /// Structural fields (`id`, `name`, `stage_type`) on the new value
+    /// must match the existing entry; this method only intends to
+    /// mutate annotations. Mismatches are not enforced here, but
+    /// `validate_with_level` should be re-run if structural fields change.
+    pub fn replace_stage_info(&mut self, info: StageInfo) -> Option<StageInfo> {
+        self.stages.insert(info.id, info)
+    }
+
+    /// Derive per-edge `typing` annotations from the already-attached stage
+    /// `typing` and `join_metadata` annotations (FLOWIP-114b).
+    ///
+    /// For forward edges:
+    ///
+    /// - When the downstream stage is a join with `join_metadata` populated,
+    ///   the upstream is classified as `reference` (using the join's
+    ///   `reference_type`) or `stream` (using the join's `stream_type`).
+    /// - Otherwise the edge prefers the upstream stage's `output_type`. If
+    ///   the upstream lacks typing and the downstream has exactly one
+    ///   forward upstream, the downstream's `input_type` is used as a
+    ///   fallback.
+    /// - Edges with no derivable label, and all backward edges, are left
+    ///   with `typing = None`.
+    ///
+    /// Existing edge `typing` annotations are overwritten.
+    pub fn derive_edge_typings(mut self) -> Self {
+        use crate::types::typing::{
+            EdgeTypingInfo, EdgeTypingLabelSource, EdgeTypingRole, TypeHintInfo,
+        };
+        use crate::types::StageType;
+
+        let forward_upstream_count: HashMap<StageId, usize> = self
+            .edges
+            .iter()
+            .filter(|e| e.kind == crate::topology::EdgeKind::Forward)
+            .fold(HashMap::new(), |mut acc, e| {
+                *acc.entry(e.to).or_insert(0) += 1;
+                acc
+            });
+
+        for edge in self.edges.iter_mut() {
+            if edge.kind != crate::topology::EdgeKind::Forward {
+                edge.typing = None;
+                continue;
+            }
+
+            let upstream = self.stages.get(&edge.from);
+            let downstream = self.stages.get(&edge.to);
+            let Some(downstream) = downstream else {
+                edge.typing = None;
+                continue;
+            };
+
+            // Join-leg classification.
+            if downstream.stage_type == StageType::Join {
+                if let (Some(meta), Some(typing)) = (
+                    downstream.join_metadata.as_ref(),
+                    downstream.typing.as_ref(),
+                ) {
+                    edge.typing = if meta.catalog_source_ids.contains(&edge.from) {
+                        edge_typing_from_hint(
+                            EdgeTypingRole::Reference,
+                            EdgeTypingLabelSource::DownstreamReferenceType,
+                            &typing.reference_type,
+                        )
+                    } else if meta.stream_source_ids.contains(&edge.from) {
+                        edge_typing_from_hint(
+                            EdgeTypingRole::Stream,
+                            EdgeTypingLabelSource::DownstreamStreamType,
+                            &typing.stream_type,
+                        )
+                    } else {
+                        None
+                    };
+                } else {
+                    edge.typing = None;
+                }
+                continue;
+            }
+
+            // Ordinary forward edge: prefer upstream output_type.
+            if let Some(upstream_typing) = upstream.and_then(|s| s.typing.as_ref()) {
+                if let Some(typing) = edge_typing_from_hint(
+                    EdgeTypingRole::Input,
+                    EdgeTypingLabelSource::UpstreamOutputType,
+                    &upstream_typing.output_type,
+                ) {
+                    edge.typing = Some(typing);
+                    continue;
+                }
+            }
+
+            // Fall back to downstream input_type when this is the unique
+            // forward upstream.
+            if forward_upstream_count.get(&edge.to).copied().unwrap_or(0) == 1 {
+                edge.typing = downstream.typing.as_ref().and_then(|t| {
+                    edge_typing_from_hint(
+                        EdgeTypingRole::Input,
+                        EdgeTypingLabelSource::DownstreamInputType,
+                        &t.input_type,
+                    )
+                });
+                continue;
+            }
+
+            edge.typing = None;
+        }
+
+        // Inline so the topology crate does not introduce a public helper.
+        fn edge_typing_from_hint(
+            role: EdgeTypingRole,
+            label_source: EdgeTypingLabelSource,
+            payload_type: &TypeHintInfo,
+        ) -> Option<EdgeTypingInfo> {
+            if matches!(payload_type, TypeHintInfo::Unspecified) {
+                return None;
+            }
+            Some(EdgeTypingInfo::new(
+                role,
+                label_source,
+                payload_type.clone(),
+            ))
+        }
+
+        self
     }
 
     /// Get topology fingerprint - deterministic hash of structure and semantics
@@ -356,6 +550,70 @@ impl Topology {
     /// Returns the set of stages that belong to the given SCC identifier.
     pub fn scc_members(&self, scc_id: SccId) -> Option<&HashSet<StageId>> {
         self.scc_members.get(&scc_id)
+    }
+}
+
+/// Wire shape for `Topology` serialisation (FLOWIP-114b).
+///
+/// Caches (`downstream`, `upstream`, SCC tables) are not part of the wire;
+/// they are reconstructed on `Deserialize`. The wire carries only the
+/// inputs that flowed into `Topology::new_unvalidated`, plus the optional
+/// top-level annotation fields.
+#[derive(Serialize, Deserialize)]
+struct TopologyWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    flow_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    api_version: Option<String>,
+    stages: Vec<StageInfo>,
+    edges: Vec<DirectedEdge>,
+    #[serde(default)]
+    subgraphs: Vec<TopologySubgraphInfo>,
+}
+
+impl Serialize for Topology {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Sort stages by ULID bytes for deterministic output (matches
+        // topology_fingerprint canonicalisation).
+        let mut stages: Vec<_> = self.stages.values().cloned().collect();
+        stages.sort_unstable_by_key(|s| s.id.to_bytes());
+
+        let wire = TopologyWire {
+            flow_name: self.flow_name_annotation.clone(),
+            api_version: self.api_version.clone(),
+            stages,
+            edges: self.edges.clone(),
+            subgraphs: self.subgraphs.clone(),
+        };
+        wire.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Topology {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = TopologyWire::deserialize(deserializer)?;
+        let topology =
+            Topology::new_unvalidated(wire.stages, wire.edges).map_err(serde::de::Error::custom)?;
+        Ok(topology
+            .with_subgraphs(wire.subgraphs)
+            .maybe_with_flow_name(wire.flow_name)
+            .maybe_with_api_version(wire.api_version))
+    }
+}
+
+impl Topology {
+    fn maybe_with_flow_name(mut self, name: Option<String>) -> Self {
+        if let Some(name) = name {
+            self.flow_name_annotation = Some(name);
+        }
+        self
+    }
+
+    fn maybe_with_api_version(mut self, version: Option<String>) -> Self {
+        if let Some(version) = version {
+            self.api_version = Some(version);
+        }
+        self
     }
 }
 

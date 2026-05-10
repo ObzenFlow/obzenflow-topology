@@ -5,7 +5,6 @@
 //! Stage shapes define connectivity patterns in the topology
 
 use crate::stages::StageId;
-use crate::types::StageType;
 use core::fmt;
 
 /// Port identifier - composite of stage ID and local port number
@@ -90,15 +89,6 @@ impl Shape {
     pub fn new_sink(stage: StageId) -> Self {
         Shape::Sink {
             in_port: PortId::new(stage, 0),
-        }
-    }
-
-    /// Simple classification for backwards compatibility
-    pub fn stage_type(&self) -> StageType {
-        match self {
-            Shape::Source { .. } => StageType::InfiniteSource,
-            Shape::Sink { .. } => StageType::Sink,
-            _ => StageType::Transform,
         }
     }
 }
