@@ -138,15 +138,15 @@ fn topology_round_trips_with_full_annotations() {
             is_placeholder: false,
             placeholder_message: None,
         })
-        .with_subgraph(StageSubgraphMembership {
-            subgraph_id: "ai_map_reduce:digest".to_string(),
-            kind: "ai_map_reduce".to_string(),
-            binding: "digest".to_string(),
-            role: "chunk".to_string(),
-            order: 0,
-            is_entry: true,
-            is_exit: false,
-        });
+        .with_subgraph(StageSubgraphMembership::new(
+            "ai_map_reduce:digest",
+            "ai_map_reduce",
+            "digest",
+            "chunk",
+            0,
+            true,
+            false,
+        ));
 
     // Annotate the stream-to-join edge with typing + a contract.
     let mut edges: Vec<DirectedEdge> = topology
@@ -179,22 +179,17 @@ fn topology_round_trips_with_full_annotations() {
         *info = join_info.clone();
     }
 
-    let subgraph_registry = vec![TopologySubgraphInfo {
-        subgraph_id: "ai_map_reduce:digest".to_string(),
-        kind: "ai_map_reduce".to_string(),
-        binding: "digest".to_string(),
-        label: "digest".to_string(),
-        member_stage_ids: vec![join_id],
-        internal_edges: vec![SubgraphInternalEdge {
-            from_stage_id: join_id,
-            to_stage_id: join_id,
-            role: "self".to_string(),
-        }],
-        entry_stage_ids: vec![join_id],
-        exit_stage_ids: vec![join_id],
-        parent_subgraph_id: None,
-        collapsible: true,
-    }];
+    let subgraph_registry = vec![TopologySubgraphInfo::new(
+        "ai_map_reduce:digest",
+        "ai_map_reduce",
+        "digest",
+        "digest",
+        vec![join_id],
+        vec![SubgraphInternalEdge::new(join_id, join_id, "self")],
+        vec![join_id],
+        vec![join_id],
+        true,
+    )];
 
     let annotated = Topology::new_unvalidated(stages, edges)
         .expect("annotated topology builds")
