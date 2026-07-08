@@ -12,6 +12,17 @@ readme = "README.md"
 keywords = ["graph", "topology", "flow", "dag", "pipeline"]
 categories = ["data-structures", "algorithms"]
 
+# LICENSE-* listed explicitly: the SPDX `license` gives cargo no license-file to auto-include.
+include = [
+    "src/**/*.rs",
+    "Cargo.toml",
+    "README.md",
+    "CHANGELOG.md",
+    "TRADEMARKS.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+]
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
