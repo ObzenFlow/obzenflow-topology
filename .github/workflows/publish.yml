@@ -7,10 +7,26 @@ on:
         description: "Version to publish; must match an existing tag vX.Y.Z and Cargo.toml"
         required: true
 
+# one release per version at a time; a second dispatch queues rather than races
+concurrency:
+  group: publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
   preflight:                                    # release-specific checks; no environment, no secrets
     runs-on: ubuntu-latest
+    env:
+      REQUESTED_VERSION: ${{ inputs.version }}
     steps:
+      - name: Validate version format
+        run: |
+          if [[ ! "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::version must be X.Y.Z or X.Y.Z-prerelease, got '$REQUESTED_VERSION'"
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/v${{ inputs.version }}  # tag must exist, or this fails
@@ -24,9 +40,9 @@ jobs:
         run: |
           MANIFEST=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.name == "obzenflow-topology") | .version')
-          echo "requested=${{ inputs.version }}  tag=v${{ inputs.version }}  manifest=$MANIFEST"
-          [ "$MANIFEST" = "${{ inputs.version }}" ] || {
-            echo "::error::Tag v${{ inputs.version }} has Cargo.toml version $MANIFEST"
+          echo "requested=$REQUESTED_VERSION  tag=v$REQUESTED_VERSION  manifest=$MANIFEST"
+          [ "$MANIFEST" = "$REQUESTED_VERSION" ] || {
+            echo "::error::Tag v$REQUESTED_VERSION points at Cargo.toml version $MANIFEST"
             exit 1
           }
 
@@ -52,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release                        # required-reviewer approval gate
     permissions:
-      contents: read                            # for checkout (an explicit block resets unlisted scopes to none)
+      contents: read                            # for checkout
       id-token: write                           # OIDC, only this job needs it
     steps:
       - uses: actions/checkout@v4
