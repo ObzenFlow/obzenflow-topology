@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to check out; defaults to the triggering ref for push and pull_request runs"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   dco:
@@ -80,6 +87,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.0
@@ -107,6 +116,8 @@ jobs:
             cargo_args: "--all-features"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.0
@@ -135,6 +146,8 @@ jobs:
             cargo_args: "--all-features"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.0
@@ -149,6 +162,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.0
@@ -267,6 +282,8 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.0
