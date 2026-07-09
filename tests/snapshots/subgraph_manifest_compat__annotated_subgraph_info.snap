@@ -1,0 +1,50 @@
+---
+source: tests/subgraph_manifest_compat.rs
+expression: "serde_json::to_string_pretty(&info).expect(\"info serializes\")"
+---
+{
+  "subgraph_id": "saga:checkout",
+  "kind": "saga",
+  "binding": "checkout",
+  "label": "checkout",
+  "member_stage_ids": [
+    "00000000000000000000000003"
+  ],
+  "internal_edges": [
+    {
+      "from_stage_id": "00000000000000000000000003",
+      "to_stage_id": "00000000000000000000000003",
+      "role": "terminal"
+    }
+  ],
+  "entry_stage_ids": [
+    "00000000000000000000000003"
+  ],
+  "exit_stage_ids": [
+    "00000000000000000000000003"
+  ],
+  "collapsible": true,
+  "boundary_ports": [
+    {
+      "name": "in",
+      "direction": "input",
+      "member_stage_id": "00000000000000000000000003",
+      "payload_event_types": [
+        "order.validated.v1"
+      ],
+      "default": true
+    },
+    {
+      "name": "declined",
+      "direction": "output",
+      "member_stage_id": "00000000000000000000000003",
+      "payload_event_types": [
+        "payment.declined.v1"
+      ],
+      "default": false
+    }
+  ],
+  "kind_extension": {
+    "version": 1
+  }
+}

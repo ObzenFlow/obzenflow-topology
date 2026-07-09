@@ -1,0 +1,90 @@
+name: Publish to crates.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish; must match an existing tag vX.Y.Z and Cargo.toml"
+        required: true
+
+# one release per version at a time; a second dispatch queues rather than races
+concurrency:
+  group: publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:                                    # release-specific checks; no environment, no secrets
+    runs-on: ubuntu-latest
+    env:
+      REQUESTED_VERSION: ${{ inputs.version }}
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}     # pin the resolved commit so later jobs cannot re-resolve a moved tag
+    steps:
+      - name: Validate version format
+        run: |
+          if [[ ! "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::version must be X.Y.Z or X.Y.Z-prerelease, got '$REQUESTED_VERSION'"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/v${{ inputs.version }}  # tag must exist, or this fails
+      - name: Pin the checked-out commit
+        id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fetch --locked
+
+      - name: Verify tag and manifest agree on version
+        run: |
+          MANIFEST=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "obzenflow-topology") | .version')
+          echo "requested=$REQUESTED_VERSION  tag=v$REQUESTED_VERSION  manifest=$MANIFEST"
+          [ "$MANIFEST" = "$REQUESTED_VERSION" ] || {
+            echo "::error::Tag v$REQUESTED_VERSION points at Cargo.toml version $MANIFEST"
+            exit 1
+          }
+
+      - name: Show the shipped file set, then dry-run
+        run: |
+          {
+            echo '### Files that will be published'
+            echo '<pre>'
+            cargo package --list
+            echo '</pre>'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          cargo publish --dry-run --locked
+
+  # Full ci.yml parity against the pinned commit, via the reusable workflow. dco
+  # self-skips (pull_request-only), so this runs fmt, clippy, test, policy, and wasm.
+  ci:
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.preflight.outputs.sha }}
+
+  publish:
+    needs: [preflight, ci]
+    runs-on: ubuntu-latest
+    environment: release                        # required-reviewer approval gate
+    permissions:
+      contents: read                            # for checkout
+      id-token: write                           # OIDC, only this job needs it
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}   # the exact commit preflight inspected, not a re-resolved tag
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.0
+      - uses: rust-lang/crates-io-auth-action@v1  # short-lived token, no stored secret
+        id: auth
+      - run: cargo publish --locked --no-verify   # verify already ran in preflight's dry-run; keeps build scripts away from the live token
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

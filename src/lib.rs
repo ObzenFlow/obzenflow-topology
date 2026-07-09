@@ -36,9 +36,10 @@ pub use builder::TopologyBuilder;
 pub use stages::StageInfo;
 pub use topology::{DirectedEdge, EdgeKind, Topology, TopologyMetrics, ValidationLevel};
 pub use types::{
-    BackoffStrategy, CircuitBreakerInfo, ContractInfo, EdgeTypingInfo, EdgeTypingLabelSource,
-    EdgeTypingRole, JoinMetadataInfo, MiddlewareInfo, OpenPolicy, RateLimiterInfo, RetryInfo,
-    SccId, StageId, StageRole, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
-    SubgraphInternalEdge, TopologySubgraphInfo, TypeHintInfo,
+    BackoffStrategy, BoundaryPortSpec, CircuitBreakerInfo, ContractInfo, EdgeTypingInfo,
+    EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo, MiddlewareInfo, OpenPolicy,
+    PortDirection, RateLimiterInfo, RetryInfo, SccId, StageId, StageRole, StageStatus,
+    StageSubgraphMembership, StageType, StageTypingInfo, SubgraphInternalEdge,
+    TopologySubgraphInfo, TypeHintInfo,
 };
 pub use validation::{TopologyError, ValidationResult};

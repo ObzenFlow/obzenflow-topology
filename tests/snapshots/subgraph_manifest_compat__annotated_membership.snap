@@ -1,0 +1,14 @@
+---
+source: tests/subgraph_manifest_compat.rs
+expression: "serde_json::to_string_pretty(&membership).expect(\"membership serializes\")"
+---
+{
+  "subgraph_id": "saga:checkout",
+  "kind": "saga",
+  "binding": "checkout",
+  "role": "authorize_payment",
+  "order": 0,
+  "is_entry": true,
+  "is_exit": false,
+  "class": "compensatable"
+}
