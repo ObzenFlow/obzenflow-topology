@@ -22,7 +22,7 @@ fn schema_version_one() -> u32 {
     1
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)] // serde skip_serializing_if signature
+// serde's skip_serializing_if predicate takes the field by reference
 fn is_schema_version_one(version: &u32) -> bool {
     *version == 1
 }
