@@ -3,7 +3,7 @@
 // https://obzenflow.dev
 
 use crate::stages::StageId;
-use crate::types::{ContractInfo, EdgeTypingInfo};
+use crate::types::{CompositePortRef, ContractInfo, EdgeTypingInfo};
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
@@ -50,6 +50,14 @@ pub struct DirectedEdge {
     /// Derived per-edge payload typing projection (FLOWIP-114b).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub typing: Option<EdgeTypingInfo>,
+
+    /// Named composite ports crossed by this physical edge (FLOWIP-128a B3).
+    ///
+    /// This annotation is excluded from structural equality and hashing, like
+    /// the other build-derived edge annotations. A vector is required because
+    /// one composite-to-composite edge crosses two independently named ports.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub composite_ports: Vec<CompositePortRef>,
 }
 
 impl DirectedEdge {
@@ -60,6 +68,7 @@ impl DirectedEdge {
             kind,
             contracts: None,
             typing: None,
+            composite_ports: Vec::new(),
         }
     }
 
@@ -70,6 +79,11 @@ impl DirectedEdge {
 
     pub fn with_typing(mut self, typing: EdgeTypingInfo) -> Self {
         self.typing = Some(typing);
+        self
+    }
+
+    pub fn with_composite_ports(mut self, ports: Vec<CompositePortRef>) -> Self {
+        self.composite_ports = ports;
         self
     }
 }

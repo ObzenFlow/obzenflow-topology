@@ -4,7 +4,7 @@
 
 use crate::stages::{StageId, StageInfo};
 use crate::topology::DirectedEdge;
-use crate::types::{SccId, StageRole, TopologySubgraphInfo};
+use crate::types::{PortDirection, SccId, StageRole, TopologySubgraphInfo};
 use crate::validation::{
     compute_sccs, validate_all_connections, validate_edges_and_structure,
     validate_topology_structure, TopologyError, ValidationResult,
@@ -122,10 +122,12 @@ impl Topology {
         match level {
             ValidationLevel::Structural => {
                 // Reuse existing structure for validation
-                validate_edges_and_structure(&self.stages, &self.edges)
+                validate_edges_and_structure(&self.stages, &self.edges)?;
+                self.validate_composite_boundaries()
             }
             ValidationLevel::Semantic => {
                 validate_edges_and_structure(&self.stages, &self.edges)?;
+                self.validate_composite_boundaries()?;
                 validate_all_connections(&self.stages, &self.edges)
             }
             ValidationLevel::Full => {
@@ -138,6 +140,151 @@ impl Topology {
     /// Convenience method: run full semantic validation.
     pub fn validate_semantics(&self) -> Result<(), TopologyError> {
         self.validate_with_level(ValidationLevel::Full)
+    }
+
+    /// Validate named composite boundary ports against the physical graph.
+    ///
+    /// Port annotations are build-derived but semantically significant: they
+    /// are the durable identity used by runtime metrics and Studio. Every edge
+    /// crossing a registered member cut must therefore name exactly one port
+    /// for that composite, and every named port must agree with its canonical
+    /// member, direction, and payload ownership.
+    pub fn validate_composite_boundaries(&self) -> Result<(), TopologyError> {
+        // Topology construction validates the physical graph before additive
+        // annotations are attached. Re-run this method after the subgraph
+        // registry is installed to validate named bindings.
+        if self.subgraphs.is_empty() {
+            return Ok(());
+        }
+
+        for subgraph in &self.subgraphs {
+            let members: HashSet<StageId> = subgraph.member_stage_ids.iter().copied().collect();
+            let mut ports_by_name = HashMap::new();
+            let mut payload_owner: HashMap<(PortDirection, &str), &str> = HashMap::new();
+
+            for port in &subgraph.boundary_ports {
+                if !members.contains(&port.member_stage_id) {
+                    return Err(TopologyError::InvalidCompositeBoundary {
+                        composite: subgraph.subgraph_id.clone(),
+                        reason: format!(
+                            "port '{}' names stage {} which is not a member",
+                            port.name, port.member_stage_id
+                        ),
+                    });
+                }
+                if ports_by_name.insert(port.name.as_str(), port).is_some() {
+                    return Err(TopologyError::InvalidCompositeBoundary {
+                        composite: subgraph.subgraph_id.clone(),
+                        reason: format!("duplicate boundary port '{}'", port.name),
+                    });
+                }
+                for payload in &port.payload_event_types {
+                    if let Some(first) =
+                        payload_owner.insert((port.direction, payload.as_str()), port.name.as_str())
+                    {
+                        return Err(TopologyError::InvalidCompositeBoundary {
+                            composite: subgraph.subgraph_id.clone(),
+                            reason: format!(
+                                "payload event type '{payload}' is owned by both {} ports '{first}' and '{}'",
+                                match port.direction {
+                                    PortDirection::Input => "input",
+                                    PortDirection::Output => "output",
+                                },
+                                port.name
+                            ),
+                        });
+                    }
+                }
+            }
+
+            for edge in &self.edges {
+                let refs: Vec<_> = edge
+                    .composite_ports
+                    .iter()
+                    .filter(|port_ref| port_ref.subgraph_id == subgraph.subgraph_id)
+                    .collect();
+                if refs.len() > 1 {
+                    return Err(TopologyError::InvalidCompositeBoundary {
+                        composite: subgraph.subgraph_id.clone(),
+                        reason: format!(
+                            "edge {} -> {} names more than one port for the same composite",
+                            edge.from, edge.to
+                        ),
+                    });
+                }
+
+                let from_member = members.contains(&edge.from);
+                let to_member = members.contains(&edge.to);
+                let crosses_cut = from_member != to_member;
+                let Some(port_ref) = refs.first().copied() else {
+                    if crosses_cut {
+                        return Err(TopologyError::InvalidCompositeBoundary {
+                            composite: subgraph.subgraph_id.clone(),
+                            reason: format!(
+                                "crossing edge {} -> {} has no named port binding",
+                                edge.from, edge.to
+                            ),
+                        });
+                    }
+                    continue;
+                };
+
+                let Some(port) = ports_by_name.get(port_ref.port_name.as_str()).copied() else {
+                    return Err(TopologyError::InvalidCompositeBoundary {
+                        composite: subgraph.subgraph_id.clone(),
+                        reason: format!(
+                            "edge {} -> {} references unknown port '{}'",
+                            edge.from, edge.to, port_ref.port_name
+                        ),
+                    });
+                };
+
+                let endpoints_match = match port.direction {
+                    PortDirection::Input => {
+                        edge.to == port.member_stage_id && !from_member && to_member
+                    }
+                    PortDirection::Output => {
+                        edge.from == port.member_stage_id && from_member && !to_member
+                    }
+                };
+                if !endpoints_match {
+                    return Err(TopologyError::InvalidCompositeBoundary {
+                        composite: subgraph.subgraph_id.clone(),
+                        reason: format!(
+                            "edge {} -> {} does not cross {} port '{}' at member {}",
+                            edge.from,
+                            edge.to,
+                            match port.direction {
+                                PortDirection::Input => "input",
+                                PortDirection::Output => "output",
+                            },
+                            port.name,
+                            port.member_stage_id
+                        ),
+                    });
+                }
+            }
+        }
+
+        for edge in &self.edges {
+            for port_ref in &edge.composite_ports {
+                if !self
+                    .subgraphs
+                    .iter()
+                    .any(|subgraph| subgraph.subgraph_id == port_ref.subgraph_id)
+                {
+                    return Err(TopologyError::InvalidCompositeBoundary {
+                        composite: port_ref.subgraph_id.clone(),
+                        reason: format!(
+                            "edge {} -> {} references an unknown composite",
+                            edge.from, edge.to
+                        ),
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Get stages that flow INTO this stage
@@ -594,10 +741,14 @@ impl<'de> Deserialize<'de> for Topology {
         let wire = TopologyWire::deserialize(deserializer)?;
         let topology =
             Topology::new_unvalidated(wire.stages, wire.edges).map_err(serde::de::Error::custom)?;
-        Ok(topology
+        let topology = topology
             .with_subgraphs(wire.subgraphs)
             .maybe_with_flow_name(wire.flow_name)
-            .maybe_with_api_version(wire.api_version))
+            .maybe_with_api_version(wire.api_version);
+        topology
+            .validate_composite_boundaries()
+            .map_err(serde::de::Error::custom)?;
+        Ok(topology)
     }
 }
 

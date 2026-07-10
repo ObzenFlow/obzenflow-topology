@@ -28,6 +28,9 @@ pub enum TopologyError {
     #[error("Disconnected stages found: {}", stages.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", "))]
     DisconnectedStages { stages: Vec<StageId> },
 
+    #[error("Invalid composite boundary for '{composite}': {reason}")]
+    InvalidCompositeBoundary { composite: String, reason: String },
+
     #[error("Self-cycle detected: stage '{stage}' connects to itself")]
     SelfCycle { stage: String },
 

@@ -178,11 +178,34 @@ impl SubgraphInternalEdge {
 }
 
 /// Direction of a composite boundary port (FLOWIP-128a D1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PortDirection {
     Input,
     Output,
+}
+
+/// A durable reference from one physical topology edge to the named composite
+/// port that edge crosses (FLOWIP-128a B3).
+///
+/// The port definition remains canonical in [`BoundaryPortSpec`]. Direction,
+/// member, and payload types are deliberately not duplicated here. A physical
+/// composite-to-composite edge can carry two references, one for the upstream
+/// composite's output port and one for the downstream composite's input port.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompositePortRef {
+    pub subgraph_id: String,
+    pub port_name: String,
+}
+
+impl CompositePortRef {
+    pub fn new(subgraph_id: impl Into<String>, port_name: impl Into<String>) -> Self {
+        Self {
+            subgraph_id: subgraph_id.into(),
+            port_name: port_name.into(),
+        }
+    }
 }
 
 /// Declared boundary port on a composite (FLOWIP-128a D1). External edges

@@ -30,8 +30,8 @@ pub use scc_id::SccId;
 pub use stage_type::{StageRole, StageType};
 pub use status::StageStatus;
 pub use subgraphs::{
-    BoundaryPortSpec, PortDirection, StageSubgraphMembership, SubgraphInternalEdge,
-    TopologySubgraphInfo,
+    BoundaryPortSpec, CompositePortRef, PortDirection, StageSubgraphMembership,
+    SubgraphInternalEdge, TopologySubgraphInfo,
 };
 pub use typing::{
     EdgeTypingInfo, EdgeTypingLabelSource, EdgeTypingRole, StageTypingInfo, TypeHintInfo,
