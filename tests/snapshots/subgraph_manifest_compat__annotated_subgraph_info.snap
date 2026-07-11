@@ -43,8 +43,5 @@ expression: "serde_json::to_string_pretty(&info).expect(\"info serializes\")"
       ],
       "default": false
     }
-  ],
-  "kind_extension": {
-    "version": 1
-  }
+  ]
 }

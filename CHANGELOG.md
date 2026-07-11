@@ -59,10 +59,10 @@ let edge = SubgraphInternalEdge::new(from_stage_id, to_stage_id, lane);
   (set with `.with_class()`) so a composite can label each member in its own
   terms. A saga, for example, marks members as `compensatable`, `retriable`,
   `pivot`, `compensation`, or `driver`.
-- **Richer registry entries.** `TopologySubgraphInfo` gains `boundary_ports`, a
-  `kind_extension` slot for data that only the owning composite kind needs to
-  understand (such as a saga's compensation pairings), and a `schema_version`
-  so manifests can evolve over time.
+- **Richer registry entries.** `TopologySubgraphInfo` gains `boundary_ports`
+  and a `schema_version` so manifests can evolve over time. Kind-owned
+  extension data remains deferred until a composite kind ships as its real
+  producer and consumer.
 - **Forward-compatible manifests,** covered by new snapshot and cross-version
   tests. New fields serialize only when set and default sensibly when absent, so
   a 0.4 manifest still loads unchanged.

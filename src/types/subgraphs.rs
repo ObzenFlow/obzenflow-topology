@@ -99,11 +99,6 @@ pub struct TopologySubgraphInfo {
     /// Declared boundary ports (FLOWIP-128a D1).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boundary_ports: Vec<BoundaryPortSpec>,
-    /// Kind-owned extension data (compensation pairing, pivot, driver
-    /// relations). Typed at the owning kind, opaque here; carries its own
-    /// version field by kind convention (FLOWIP-128a D4).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind_extension: Option<serde_json::Value>,
 }
 
 impl TopologySubgraphInfo {
@@ -134,7 +129,6 @@ impl TopologySubgraphInfo {
             collapsible,
             schema_version: 1,
             boundary_ports: Vec::new(),
-            kind_extension: None,
         }
     }
 
@@ -145,11 +139,6 @@ impl TopologySubgraphInfo {
 
     pub fn with_boundary_ports(mut self, ports: Vec<BoundaryPortSpec>) -> Self {
         self.boundary_ports = ports;
-        self
-    }
-
-    pub fn with_kind_extension(mut self, extension: serde_json::Value) -> Self {
-        self.kind_extension = Some(extension);
         self
     }
 }
