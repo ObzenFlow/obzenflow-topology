@@ -16,11 +16,11 @@
 //!    validation identically.
 
 use obzenflow_topology::{
-    BackoffStrategy, CircuitBreakerInfo, ContractInfo, DirectedEdge, EdgeTypingInfo,
-    EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo, MiddlewareInfo, OpenPolicy,
-    RateLimiterInfo, RetryInfo, StageInfo, StageStatus, StageSubgraphMembership, StageType,
-    StageTypingInfo, SubgraphInternalEdge, Topology, TopologyBuilder, TopologySubgraphInfo,
-    TypeHintInfo,
+    BackoffStrategy, BoundaryPortSpec, CircuitBreakerInfo, CompositePortRef, ContractInfo,
+    DirectedEdge, EdgeTypingInfo, EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo,
+    MiddlewareInfo, OpenPolicy, PortDirection, RateLimiterInfo, RetryInfo, StageInfo, StageStatus,
+    StageSubgraphMembership, StageType, StageTypingInfo, SubgraphInternalEdge, Topology,
+    TopologyBuilder, TopologySubgraphInfo, TypeHintInfo,
 };
 
 fn build_minimal_topology() -> Topology {
@@ -153,7 +153,7 @@ fn topology_round_trips_with_full_annotations() {
         .edges()
         .iter()
         .map(|edge| {
-            if edge.from == stream_id && edge.to == join_id {
+            let annotated = if edge.from == stream_id && edge.to == join_id {
                 edge.clone()
                     .with_typing(EdgeTypingInfo::new(
                         EdgeTypingRole::Stream,
@@ -169,6 +169,12 @@ fn topology_round_trips_with_full_annotations() {
                 ))
             } else {
                 edge.clone()
+            };
+            if edge.to == join_id {
+                annotated
+                    .with_composite_ports(vec![CompositePortRef::new("ai_map_reduce:digest", "in")])
+            } else {
+                annotated
             }
         })
         .collect();
@@ -189,7 +195,14 @@ fn topology_round_trips_with_full_annotations() {
         vec![join_id],
         vec![join_id],
         true,
-    )];
+    )
+    .with_boundary_ports(vec![BoundaryPortSpec::new(
+        "in",
+        PortDirection::Input,
+        join_id,
+        vec!["EnrichedOrder".to_string(), "Promotion".to_string()],
+        true,
+    )])];
 
     let annotated = Topology::new_unvalidated(stages, edges)
         .expect("annotated topology builds")

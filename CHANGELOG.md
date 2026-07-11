@@ -6,7 +6,21 @@ This crate follows [Semantic Versioning](https://semver.org). It is pre-1.0, so
 a minor release (0.4 to 0.5) may contain breaking changes. Each one is called
 out below with the code you need to change.
 
-## [Unreleased]
+## [0.5.1] - 2026-07-10
+
+### Added
+
+- (FLOWIP-128a B3/B4) `CompositePortRef` and `DirectedEdge::composite_ports`
+  persist the selected named port on every physical composite cut edge. A
+  composite-to-composite edge carries both independently owned refs.
+
+### Changed
+
+- Composite graph cuts are a coordinated 0.5.1 contract. Every crossing edge
+  must carry its complete named-port binding when constructed or deserialized;
+  missing, partial, unknown, or endpoint-mismatched bindings fail validation.
+  ObzenFlow and Studio must upgrade together and regenerate any 0.5.0 topology
+  documents rather than attempting to infer or render an unbound cut.
 
 ## [0.5.0] - 2026-07-09
 
@@ -45,10 +59,10 @@ let edge = SubgraphInternalEdge::new(from_stage_id, to_stage_id, lane);
   (set with `.with_class()`) so a composite can label each member in its own
   terms. A saga, for example, marks members as `compensatable`, `retriable`,
   `pivot`, `compensation`, or `driver`.
-- **Richer registry entries.** `TopologySubgraphInfo` gains `boundary_ports`, a
-  `kind_extension` slot for data that only the owning composite kind needs to
-  understand (such as a saga's compensation pairings), and a `schema_version`
-  so manifests can evolve over time.
+- **Richer registry entries.** `TopologySubgraphInfo` gains `boundary_ports`
+  and a `schema_version` so manifests can evolve over time. Kind-owned
+  extension data remains deferred until a composite kind ships as its real
+  producer and consumer.
 - **Forward-compatible manifests,** covered by new snapshot and cross-version
   tests. New fields serialize only when set and default sensibly when absent, so
   a 0.4 manifest still loads unchanged.

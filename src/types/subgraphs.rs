@@ -99,11 +99,6 @@ pub struct TopologySubgraphInfo {
     /// Declared boundary ports (FLOWIP-128a D1).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boundary_ports: Vec<BoundaryPortSpec>,
-    /// Kind-owned extension data (compensation pairing, pivot, driver
-    /// relations). Typed at the owning kind, opaque here; carries its own
-    /// version field by kind convention (FLOWIP-128a D4).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind_extension: Option<serde_json::Value>,
 }
 
 impl TopologySubgraphInfo {
@@ -134,7 +129,6 @@ impl TopologySubgraphInfo {
             collapsible,
             schema_version: 1,
             boundary_ports: Vec::new(),
-            kind_extension: None,
         }
     }
 
@@ -145,11 +139,6 @@ impl TopologySubgraphInfo {
 
     pub fn with_boundary_ports(mut self, ports: Vec<BoundaryPortSpec>) -> Self {
         self.boundary_ports = ports;
-        self
-    }
-
-    pub fn with_kind_extension(mut self, extension: serde_json::Value) -> Self {
-        self.kind_extension = Some(extension);
         self
     }
 }
@@ -178,11 +167,34 @@ impl SubgraphInternalEdge {
 }
 
 /// Direction of a composite boundary port (FLOWIP-128a D1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PortDirection {
     Input,
     Output,
+}
+
+/// A durable reference from one physical topology edge to the named composite
+/// port that edge crosses (FLOWIP-128a B3).
+///
+/// The port definition remains canonical in [`BoundaryPortSpec`]. Direction,
+/// member, and payload types are deliberately not duplicated here. A physical
+/// composite-to-composite edge can carry two references, one for the upstream
+/// composite's output port and one for the downstream composite's input port.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompositePortRef {
+    pub subgraph_id: String,
+    pub port_name: String,
+}
+
+impl CompositePortRef {
+    pub fn new(subgraph_id: impl Into<String>, port_name: impl Into<String>) -> Self {
+        Self {
+            subgraph_id: subgraph_id.into(),
+            port_name: port_name.into(),
+        }
+    }
 }
 
 /// Declared boundary port on a composite (FLOWIP-128a D1). External edges

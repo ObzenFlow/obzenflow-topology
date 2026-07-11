@@ -6,14 +6,12 @@
 //!
 //! The subgraph family evolves additively: a 0.4-shape document deserializes
 //! with defaults, a value with no annotations serializes byte-identical to
-//! the 0.4 shape, unknown future fields are tolerated, and the kind
-//! extension slot round-trips a typed kind-owned struct.
+//! the 0.4 shape, and unknown future fields are tolerated.
 
 use obzenflow_topology::{
     BoundaryPortSpec, PortDirection, StageId, StageSubgraphMembership, SubgraphInternalEdge,
     TopologySubgraphInfo,
 };
-use serde::{Deserialize, Serialize};
 
 fn stage_id(n: u128) -> StageId {
     StageId::from_bytes(n.to_be_bytes())
@@ -61,7 +59,6 @@ fn zero_four_shape_deserializes_with_defaults() {
         serde_json::from_value(info_04_json(id)).expect("0.4 info deserializes");
     assert_eq!(info.schema_version, 1);
     assert!(info.boundary_ports.is_empty());
-    assert_eq!(info.kind_extension, None);
     assert_eq!(info.parent_subgraph_id, None);
 }
 
@@ -116,46 +113,6 @@ fn unknown_future_fields_are_tolerated() {
     assert_eq!(info.schema_version, 7);
 }
 
-/// Kind-owned extension struct, typed at the owner, opaque in the manifest
-/// (the Beam urn-plus-payload pattern). Carries its own version field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct TestKindExtension {
-    version: u32,
-    compensates: Vec<(String, String)>,
-    pivot: Option<String>,
-}
-
-#[test]
-fn kind_extension_round_trips_typed_struct() {
-    let extension = TestKindExtension {
-        version: 1,
-        compensates: vec![("pack_order".into(), "release_packing".into())],
-        pivot: Some("ship_order".into()),
-    };
-
-    let id = stage_id(2);
-    let info = TopologySubgraphInfo::new(
-        "saga:checkout",
-        "saga",
-        "checkout",
-        "checkout",
-        vec![id],
-        vec![],
-        vec![id],
-        vec![id],
-        true,
-    )
-    .with_kind_extension(serde_json::to_value(&extension).expect("extension serializes"));
-
-    let json = serde_json::to_string(&info).expect("info serializes");
-    let back: TopologySubgraphInfo = serde_json::from_str(&json).expect("info deserializes");
-    let recovered: TestKindExtension =
-        serde_json::from_value(back.kind_extension.expect("extension present"))
-            .expect("typed extension recovers");
-    assert_eq!(recovered, extension);
-    assert_eq!(recovered.version, 1);
-}
-
 #[test]
 fn annotated_manifest_shape_snapshot() {
     let id = stage_id(3);
@@ -185,8 +142,7 @@ fn annotated_manifest_shape_snapshot() {
             vec!["payment.declined.v1".into()],
             false,
         ),
-    ])
-    .with_kind_extension(serde_json::json!({"version": 1}));
+    ]);
 
     let membership = StageSubgraphMembership::new(
         "saga:checkout",

@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "obzenflow-topology"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "insta",
  "obzenflow-idkit",
