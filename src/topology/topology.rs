@@ -150,22 +150,6 @@ impl Topology {
     /// for that composite, and every named port must agree with its canonical
     /// member, direction, and payload ownership.
     pub fn validate_composite_boundaries(&self) -> Result<(), TopologyError> {
-        self.validate_composite_boundaries_with_legacy_absence(false)
-    }
-
-    /// Deserialize the additive 0.5.1 edge field without making a complete
-    /// 0.5.0 graph unreadable. A subgraph with no physical refs at all is
-    /// legacy/unavailable boundary evidence; once any ref for that subgraph is
-    /// present, the producer has opted into the 0.5.1 contract and the entire
-    /// cut must validate strictly.
-    fn validate_composite_boundaries_for_deserialization(&self) -> Result<(), TopologyError> {
-        self.validate_composite_boundaries_with_legacy_absence(true)
-    }
-
-    fn validate_composite_boundaries_with_legacy_absence(
-        &self,
-        allow_legacy_absence: bool,
-    ) -> Result<(), TopologyError> {
         // Topology construction validates the physical graph before additive
         // annotations are attached. Re-run this method after the subgraph
         // registry is installed to validate named bindings.
@@ -175,11 +159,6 @@ impl Topology {
 
         for subgraph in &self.subgraphs {
             let members: HashSet<StageId> = subgraph.member_stage_ids.iter().copied().collect();
-            let has_any_binding = self.edges.iter().any(|edge| {
-                edge.composite_ports
-                    .iter()
-                    .any(|port_ref| port_ref.subgraph_id == subgraph.subgraph_id)
-            });
             let mut ports_by_name = HashMap::new();
             let mut payload_owner: HashMap<(PortDirection, &str), &str> = HashMap::new();
 
@@ -239,9 +218,6 @@ impl Topology {
                 let crosses_cut = from_member != to_member;
                 let Some(port_ref) = refs.first().copied() else {
                     if crosses_cut {
-                        if allow_legacy_absence && !has_any_binding {
-                            continue;
-                        }
                         return Err(TopologyError::InvalidCompositeBoundary {
                             composite: subgraph.subgraph_id.clone(),
                             reason: format!(
@@ -770,7 +746,7 @@ impl<'de> Deserialize<'de> for Topology {
             .maybe_with_flow_name(wire.flow_name)
             .maybe_with_api_version(wire.api_version);
         topology
-            .validate_composite_boundaries_for_deserialization()
+            .validate_composite_boundaries()
             .map_err(serde::de::Error::custom)?;
         Ok(topology)
     }

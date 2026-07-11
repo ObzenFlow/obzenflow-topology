@@ -6,7 +6,7 @@ This crate follows [Semantic Versioning](https://semver.org). It is pre-1.0, so
 a minor release (0.4 to 0.5) may contain breaking changes. Each one is called
 out below with the code you need to change.
 
-## [Unreleased]
+## [0.5.1] - 2026-07-10
 
 ### Added
 
@@ -14,13 +14,13 @@ out below with the code you need to change.
   persist the selected named port on every physical composite cut edge. A
   composite-to-composite edge carries both independently owned refs.
 
-### Compatibility
+### Changed
 
-- The 0.5.1 binding is additive on the wire. A complete 0.5.0 topology with no
-  refs for a subgraph still deserializes so readers can render its structural
-  graph and report named boundary evidence unavailable. Once any ref for a
-  subgraph is present, its whole cut validates strictly; partial, unknown, or
-  endpoint-mismatched 0.5.1 bindings fail rather than being inferred.
+- Composite graph cuts are a coordinated 0.5.1 contract. Every crossing edge
+  must carry its complete named-port binding when constructed or deserialized;
+  missing, partial, unknown, or endpoint-mismatched bindings fail validation.
+  ObzenFlow and Studio must upgrade together and regenerate any 0.5.0 topology
+  documents rather than attempting to infer or render an unbound cut.
 
 ## [0.5.0] - 2026-07-09
 

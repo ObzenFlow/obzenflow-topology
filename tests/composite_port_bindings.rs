@@ -95,7 +95,7 @@ fn crossing_edge_without_binding_fails_loud() {
 
     let wire = serde_json::to_value(&topology).unwrap();
     let error = serde_json::from_value::<Topology>(wire)
-        .expect_err("partial 0.5.1 bindings must not masquerade as a legacy graph");
+        .expect_err("unbound 0.5.1 graph cuts must fail during deserialization");
     assert!(error.to_string().contains("has no named port binding"));
 }
 
@@ -158,7 +158,7 @@ fn overlapping_payload_ownership_fails_loud() {
 }
 
 #[test]
-fn absent_binding_annotation_preserves_old_edge_json() {
+fn an_edge_without_a_composite_cut_omits_the_binding_field() {
     let edge = DirectedEdge::new(stage_id(10), stage_id(11), EdgeKind::Forward);
     assert_eq!(
         serde_json::to_value(edge).expect("edge serializes"),
@@ -304,16 +304,13 @@ fn canonical_json_pins_multi_output_and_composite_to_composite_cut_refs() {
     assert!(payloads.contains(&"checkout.completed.v1"));
     assert!(!payloads.iter().any(|payload| payload.contains(".v1.v1")));
 
+    serde_json::from_value::<Topology>(wire.clone())
+        .expect("a complete 0.5.1 graph cut round-trips");
+
     for edge in wire["edges"].as_array_mut().unwrap() {
         edge.as_object_mut().unwrap().remove("composite_ports");
     }
-    let legacy: Topology =
-        serde_json::from_value(wire).expect("complete 0.5.0 absence remains deserializable");
-    let legacy_crossing = legacy
-        .edges()
-        .iter()
-        .find(|edge| edge.from == completed && edge.to == audit_entry)
-        .unwrap();
-    assert!(legacy_crossing.composite_ports.is_empty());
-    assert!(legacy.validate_composite_boundaries().is_err());
+    let error = serde_json::from_value::<Topology>(wire)
+        .expect_err("a 0.5.0 graph without cut bindings must be regenerated");
+    assert!(error.to_string().contains("has no named port binding"));
 }
