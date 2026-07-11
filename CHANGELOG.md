@@ -8,6 +8,20 @@ out below with the code you need to change.
 
 ## [Unreleased]
 
+### Added
+
+- (FLOWIP-128a B3/B4) `CompositePortRef` and `DirectedEdge::composite_ports`
+  persist the selected named port on every physical composite cut edge. A
+  composite-to-composite edge carries both independently owned refs.
+
+### Compatibility
+
+- The 0.5.1 binding is additive on the wire. A complete 0.5.0 topology with no
+  refs for a subgraph still deserializes so readers can render its structural
+  graph and report named boundary evidence unavailable. Once any ref for a
+  subgraph is present, its whole cut validates strictly; partial, unknown, or
+  endpoint-mismatched 0.5.1 bindings fail rather than being inferred.
+
 ## [0.5.0] - 2026-07-09
 
 First-class composite subgraphs. A topology can now describe a higher-level

@@ -29,9 +29,11 @@ impl std::fmt::Display for EdgeKind {
 /// Directed edge - explicit flow direction between stages.
 ///
 /// Structural fields (`from`, `to`, `kind`) drive validation and traversal.
-/// The remaining fields are optional annotations populated during flow
-/// build (FLOWIP-114b); validation, deduplication, and graph algorithms
-/// must remain agnostic to them.
+/// `contracts` and `typing` are optional product annotations populated during
+/// flow build (FLOWIP-114b). `composite_ports` is the reviewed structural
+/// exception: it names a validated graph cut consumed by runtime boundary
+/// classification (FLOWIP-128a B4). Generic edge identity and traversal still
+/// use only the physical triple.
 ///
 /// Equality and hashing intentionally consider only the structural triple
 /// `(from, to, kind)`. Two edges with the same endpoints but different
@@ -53,9 +55,9 @@ pub struct DirectedEdge {
 
     /// Named composite ports crossed by this physical edge (FLOWIP-128a B3).
     ///
-    /// This annotation is excluded from structural equality and hashing, like
-    /// the other build-derived edge annotations. A vector is required because
-    /// one composite-to-composite edge crosses two independently named ports.
+    /// The binding is excluded from physical-edge equality and hashing so it
+    /// cannot duplicate an edge. A vector is required because one
+    /// composite-to-composite edge crosses two independently named ports.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub composite_ports: Vec<CompositePortRef>,
 }
