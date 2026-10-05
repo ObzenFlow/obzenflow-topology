@@ -18,10 +18,25 @@
 use obzenflow_topology::{
     BoundaryPortSpec, CompositePortRef, ContractInfo, DirectedEdge, EdgeTypingInfo,
     EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo, MiddlewareAttachmentInfo,
-    MiddlewareAuthoredSite, MiddlewareFamily, MiddlewareInfo, MiddlewareOperation, PortDirection,
-    StageInfo, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
-    SubgraphInternalEdge, Topology, TopologyBuilder, TopologySubgraphInfo, TypeHintInfo,
+    MiddlewareAttachmentKey, MiddlewareAuthoredSite, MiddlewareDetailsInfo, MiddlewareFamily,
+    MiddlewareInfo, MiddlewareOperation, PortDirection, RateLimiterInfo, ResolvedSettingInfo,
+    SettingProvenanceInfo, SettingSubject, StageInfo, StageStatus, StageSubgraphMembership,
+    StageType, StageTypingInfo, SubgraphInternalEdge, Topology, TopologyBuilder,
+    TopologySubgraphInfo, TypeHintInfo,
 };
+
+fn limiter_setting(value: f64) -> ResolvedSettingInfo<f64> {
+    ResolvedSettingInfo {
+        value,
+        provenance: SettingProvenanceInfo {
+            source: "dsl".into(),
+            scope: "stage:enriched".into(),
+            winner_subject: SettingSubject::Effect {
+                effect_type: "catalog.lookup".into(),
+            },
+        },
+    }
+}
 
 fn build_minimal_topology() -> Topology {
     let mut builder = TopologyBuilder::new();
@@ -106,19 +121,26 @@ fn topology_round_trips_with_full_annotations() {
         .with_status(StageStatus::Running)
         .with_role(StageType::Transform.role())
         .with_is_cycle_member(false)
-        .with_middleware(
-            MiddlewareInfo { attachments: vec![MiddlewareAttachmentInfo {
-                key: "promo_enriched:effect:lookup:rate_limiter".into(),
-                label: "rate_limiter".into(), family: MiddlewareFamily::RateLimiter,
-                authored_site: MiddlewareAuthoredSite::Effect { effect_type: "catalog.lookup".into() },
-                operation: MiddlewareOperation::Effect { effect_type: "catalog.lookup".into() },
-                configuration: serde_json::json!({
-                    "middleware.rate_limiter.events_per_second": { "value": 10.0, "source": "dsl", "scope": "stage:enriched" },
-                    "middleware.rate_limiter.burst_capacity": { "value": 20.0, "source": "dsl", "scope": "stage:enriched" },
-                    "middleware.rate_limiter.cost_per_attempt": { "value": 1.0, "source": "dsl", "scope": "stage:enriched" },
-                }),
-            }] },
-        )
+        .with_middleware(MiddlewareInfo {
+            attachments: vec![MiddlewareAttachmentInfo {
+                key: MiddlewareAttachmentKey::from_bytes(4_001_u128.to_be_bytes()),
+                label: "rate_limiter".into(),
+                authored_site: MiddlewareAuthoredSite::Effect {
+                    effect_type: "catalog.lookup".into(),
+                },
+                operation: MiddlewareOperation::Effect {
+                    effect_type: "catalog.lookup".into(),
+                },
+                details: MiddlewareDetailsInfo::RateLimiter(
+                    RateLimiterInfo::try_new(
+                        limiter_setting(10.0),
+                        limiter_setting(1.0),
+                        Some(limiter_setting(20.0)),
+                    )
+                    .unwrap(),
+                ),
+            }],
+        })
         .with_join_metadata(JoinMetadataInfo::new(vec![catalog_id], vec![stream_id]))
         .with_typing(StageTypingInfo {
             input_type: TypeHintInfo::Unspecified,
@@ -229,17 +251,17 @@ fn topology_round_trips_with_full_annotations() {
     let middleware = join_back.middleware.as_ref().expect("middleware");
     assert_eq!(middleware.attachments.len(), 1);
     let limiter = &middleware.attachments[0];
-    assert_eq!(limiter.family, MiddlewareFamily::RateLimiter);
+    assert_eq!(limiter.family(), MiddlewareFamily::RateLimiter);
     assert_eq!(
         limiter.operation,
         MiddlewareOperation::Effect {
             effect_type: "catalog.lookup".into()
         }
     );
-    assert_eq!(
-        limiter.configuration["middleware.rate_limiter.burst_capacity"]["value"],
-        20.0
-    );
+    let MiddlewareDetailsInfo::RateLimiter(info) = &limiter.details else {
+        panic!("limiter info")
+    };
+    assert_eq!(info.burst_capacity().unwrap().value, 20.0);
     let subgraph = join_back.subgraph.as_ref().expect("subgraph membership");
     assert_eq!(subgraph.subgraph_id, "ai_map_reduce:digest");
 

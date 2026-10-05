@@ -11,8 +11,8 @@
 //! As of 0.4 (FLOWIP-114b), `Topology`, `StageInfo`, and `DirectedEdge` carry
 //! optional annotation fields (status, role, cycle membership, join metadata,
 //! middleware, contracts, stage typing, edge typing, subgraph membership)
-//! alongside the structural graph. Validation, SCC computation, and traversal
-//! continue to read only the structural fields.
+//! alongside the structural graph. SCC computation and traversal read structural
+//! fields only. Construction also checks middleware information and unique binding keys.
 
 #![allow(clippy::module_inception)]
 #![allow(clippy::result_large_err)]
@@ -41,5 +41,10 @@ pub use types::{
     MiddlewareFamily, MiddlewareInfo, MiddlewareOperation, PortDirection, SccId, StageId,
     StageRole, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
     SubgraphInternalEdge, TopologySubgraphInfo, TypeHintInfo,
+};
+pub use types::{
+    CircuitBreakerInfo, CircuitBreakerMode, MiddlewareAttachmentKey, MiddlewareDetailsInfo,
+    MiddlewareExtensionInfo, MiddlewareInfoError, RateLimiterInfo, ResolvedSettingInfo, RetryInfo,
+    RetryKind, SettingProvenanceInfo, SettingSubject, SettingValueInfo,
 };
 pub use validation::{TopologyError, ValidationResult};

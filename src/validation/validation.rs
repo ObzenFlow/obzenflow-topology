@@ -31,6 +31,9 @@ pub enum TopologyError {
     #[error("Invalid composite boundary for '{composite}': {reason}")]
     InvalidCompositeBoundary { composite: String, reason: String },
 
+    #[error("Invalid middleware information for stage {stage}: {reason}")]
+    InvalidMiddlewareInfo { stage: StageId, reason: String },
+
     #[error("Self-cycle detected: stage '{stage}' connects to itself")]
     SelfCycle { stage: String },
 
@@ -201,11 +204,39 @@ pub fn validate_connection_semantics(
     }
 }
 
+/// Validate descriptive middleware records before construction or annotation replacement.
+pub(crate) fn validate_middleware_info<'a>(
+    stages: impl Iterator<Item = &'a StageInfo>,
+) -> ValidationResult<()> {
+    // Binding identity belongs to the whole topology, including bindings on
+    // different stages. Validate before any consumer builds a keyed index.
+    let mut attachment_keys = HashSet::new();
+    for stage in stages {
+        if let Some(info) = &stage.middleware {
+            info.validate()
+                .map_err(|error| TopologyError::InvalidMiddlewareInfo {
+                    stage: stage.id,
+                    reason: error.to_string(),
+                })?;
+            for attachment in &info.attachments {
+                if !attachment_keys.insert(attachment.key) {
+                    return Err(TopologyError::InvalidMiddlewareInfo {
+                        stage: stage.id,
+                        reason: format!("duplicate binding key {}", attachment.key),
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Validate structural aspects of edges and adjacency (endpoints, duplicates, self-cycles, disconnected)
 pub fn validate_edges_and_structure(
     stages: &HashMap<StageId, StageInfo>,
     edges: &[DirectedEdge],
 ) -> ValidationResult<()> {
+    validate_middleware_info(stages.values())?;
     let mut downstream: HashMap<StageId, HashSet<StageId>> = HashMap::new();
     let mut upstream: HashMap<StageId, HashSet<StageId>> = HashMap::new();
 

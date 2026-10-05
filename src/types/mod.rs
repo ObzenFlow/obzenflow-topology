@@ -24,8 +24,10 @@ pub type StageId = Id<Stage>;
 pub use contract::ContractInfo;
 pub use join::JoinMetadataInfo;
 pub use middleware::{
-    MiddlewareAttachmentInfo, MiddlewareAuthoredSite, MiddlewareFamily, MiddlewareInfo,
-    MiddlewareOperation,
+    CircuitBreakerInfo, CircuitBreakerMode, MiddlewareAttachmentInfo, MiddlewareAttachmentKey,
+    MiddlewareAuthoredSite, MiddlewareDetailsInfo, MiddlewareExtensionInfo, MiddlewareFamily,
+    MiddlewareInfo, MiddlewareInfoError, MiddlewareOperation, RateLimiterInfo, ResolvedSettingInfo,
+    RetryInfo, RetryKind, SettingProvenanceInfo, SettingSubject, SettingValueInfo,
 };
 pub use scc_id::SccId;
 pub use stage_type::{StageRole, StageType};

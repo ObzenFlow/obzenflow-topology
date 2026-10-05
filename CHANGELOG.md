@@ -6,6 +6,26 @@ This crate follows [Semantic Versioning](https://semver.org). It is pre-1.0, so
 a minor release (0.4 to 0.5) may contain breaking changes. Each one is called
 out below with the code you need to change.
 
+## [0.6.0] - Unreleased
+
+### Breaking changes
+
+- Middleware attachments now carry checked `MiddlewareDetailsInfo` variants,
+  replacing independent family fields and arbitrary configuration JSON. Built-in
+  records preserve typed resolved settings and complete winning provenance;
+  observer/custom records preserve typed scalar extension information. Read family
+  through `MiddlewareAttachmentInfo::family()` and settings through named getters.
+- Attachment keys use `MiddlewareAttachmentKey`, preserving the producer's existing
+  128-bit identity and canonical uppercase ULID-shaped wire spelling. Noncanonical
+  spellings are rejected. Keys are opaque and scoped to their owning topology.
+- Deserialisation rejects malformed settings, missing provenance, explicit null for
+  optional settings, invalid active modes, and duplicate attachment keys. Omitted
+  automatic burst capacity and resolved inactive-mode settings remain meaningful.
+- `Topology::replace_stage_info` now returns a `ValidationResult`. Invalid middleware
+  information or binding-key collisions leave the existing topology unchanged.
+- Framework producers and Studio consumers must adopt this contract together.
+  There is no legacy decoder, execution policy, or configuration resolver in this crate.
+
 ## [0.5.1] - 2026-07-10
 
 ### Added
