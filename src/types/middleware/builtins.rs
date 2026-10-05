@@ -8,62 +8,6 @@ use std::collections::BTreeMap;
 
 type Settings = BTreeMap<String, ResolvedSettingInfo<SettingValueInfo>>;
 
-// The private fields keep validated information immutable. Missing optional rows
-// and present null rows have deliberately different wire meanings.
-macro_rules! checked_info {
-    ($name:ident, $wire:ident, $prefix:literal,
-        required { $($required:ident: $required_type:ty),* $(,)? }
-        optional { $($optional:ident: $optional_type:ty),* $(,)? }
-    ) => {
-        #[derive(Clone, Debug, PartialEq, Serialize)]
-        pub struct $name {
-            $($required: ResolvedSettingInfo<$required_type>,)*
-            $(#[serde(skip_serializing_if = "Option::is_none")]
-              $optional: Option<ResolvedSettingInfo<$optional_type>>,)*
-        }
-
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct $wire {
-            $($required: ResolvedSettingInfo<$required_type>,)*
-            $(#[serde(default, deserialize_with = "super::settings::present")]
-              $optional: Option<ResolvedSettingInfo<$optional_type>>,)*
-        }
-
-        impl $name {
-            $(pub fn $required(&self) -> &ResolvedSettingInfo<$required_type> { &self.$required })*
-            $(pub fn $optional(&self) -> Option<&ResolvedSettingInfo<$optional_type>> { self.$optional.as_ref() })*
-
-            pub(super) fn from_settings(mut settings: Settings) -> Result<Self, MiddlewareInfoError> {
-                let info = Self {
-                    $($required: required(&mut settings, concat!($prefix, stringify!($required)))?,)*
-                    $($optional: take(&mut settings, concat!($prefix, stringify!($optional)))?,)*
-                };
-                if let Some(key) = settings.keys().next() {
-                    return Err(MiddlewareInfoError::new(key, "unknown field for this middleware family"));
-                }
-                info.validate()?;
-                Ok(info)
-            }
-
-            fn validate_fields(&self) -> Result<(), MiddlewareInfoError> {
-                $(validate_row(concat!($prefix, stringify!($required)), &self.$required)?;)*
-                $(if let Some(row) = &self.$optional { validate_row(concat!($prefix, stringify!($optional)), row)?; })*
-                Ok(())
-            }
-        }
-
-        impl<'de> Deserialize<'de> for $name {
-            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                let wire = $wire::deserialize(deserializer)?;
-                let info = Self { $($required: wire.$required,)* $($optional: wire.$optional,)* };
-                info.validate().map_err(serde::de::Error::custom)?;
-                Ok(info)
-            }
-        }
-    };
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CircuitBreakerMode {
@@ -78,12 +22,85 @@ pub enum RetryKind {
     Exponential,
 }
 
-checked_info!(RateLimiterInfo, RateLimiterWire, "middleware.rate_limiter.",
-    required { events_per_second: f64, cost_per_attempt: f64 }
-    optional { burst_capacity: f64 }
-);
+/// Resolved rate-limiter information. Private fields preserve checked values.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RateLimiterInfo {
+    events_per_second: ResolvedSettingInfo<f64>,
+    cost_per_attempt: ResolvedSettingInfo<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    burst_capacity: Option<ResolvedSettingInfo<f64>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RateLimiterWire {
+    events_per_second: ResolvedSettingInfo<f64>,
+    cost_per_attempt: ResolvedSettingInfo<f64>,
+    // Omission means automatic capacity; an explicit null is invalid.
+    #[serde(default, deserialize_with = "super::settings::present")]
+    burst_capacity: Option<ResolvedSettingInfo<f64>>,
+}
+
+impl<'de> Deserialize<'de> for RateLimiterInfo {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = RateLimiterWire::deserialize(deserializer)?;
+        let info = Self {
+            events_per_second: wire.events_per_second,
+            cost_per_attempt: wire.cost_per_attempt,
+            burst_capacity: wire.burst_capacity,
+        };
+        info.validate().map_err(serde::de::Error::custom)?;
+        Ok(info)
+    }
+}
 
 impl RateLimiterInfo {
+    pub fn events_per_second(&self) -> &ResolvedSettingInfo<f64> {
+        &self.events_per_second
+    }
+
+    pub fn cost_per_attempt(&self) -> &ResolvedSettingInfo<f64> {
+        &self.cost_per_attempt
+    }
+
+    pub fn burst_capacity(&self) -> Option<&ResolvedSettingInfo<f64>> {
+        self.burst_capacity.as_ref()
+    }
+
+    pub(super) fn from_settings(mut settings: Settings) -> Result<Self, MiddlewareInfoError> {
+        let info = Self {
+            events_per_second: required(
+                &mut settings,
+                "middleware.rate_limiter.events_per_second",
+            )?,
+            cost_per_attempt: required(&mut settings, "middleware.rate_limiter.cost_per_attempt")?,
+            burst_capacity: take(&mut settings, "middleware.rate_limiter.burst_capacity")?,
+        };
+        if let Some(key) = settings.keys().next() {
+            return Err(MiddlewareInfoError::new(
+                key,
+                "unknown field for this middleware family",
+            ));
+        }
+        info.validate()?;
+        Ok(info)
+    }
+
+    fn validate_fields(&self) -> Result<(), MiddlewareInfoError> {
+        validate_row(
+            "middleware.rate_limiter.events_per_second",
+            &self.events_per_second,
+        )?;
+        validate_row(
+            "middleware.rate_limiter.cost_per_attempt",
+            &self.cost_per_attempt,
+        )?;
+        if let Some(row) = &self.burst_capacity {
+            validate_row("middleware.rate_limiter.burst_capacity", row)?;
+        }
+        Ok(())
+    }
+
     pub fn try_new(
         events_per_second: ResolvedSettingInfo<f64>,
         cost_per_attempt: ResolvedSettingInfo<f64>,
@@ -114,12 +131,176 @@ impl RateLimiterInfo {
     }
 }
 
-checked_info!(CircuitBreakerInfo, CircuitBreakerWire, "middleware.circuit_breaker.",
-    required { mode: CircuitBreakerMode, open_for_ms: u64, probes: u32, rate_limited_counts_as_failure: bool }
-    optional { consecutive_failures: u32, count_window: u32, minimum_calls: u32, failure_rate_threshold: f64, slow_call_duration_ms: u64, slow_call_rate_threshold: f64 }
-);
+/// Resolved circuit-breaker information, including retained inactive settings.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CircuitBreakerInfo {
+    mode: ResolvedSettingInfo<CircuitBreakerMode>,
+    open_for_ms: ResolvedSettingInfo<u64>,
+    probes: ResolvedSettingInfo<u32>,
+    rate_limited_counts_as_failure: ResolvedSettingInfo<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    consecutive_failures: Option<ResolvedSettingInfo<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    count_window: Option<ResolvedSettingInfo<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    minimum_calls: Option<ResolvedSettingInfo<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_rate_threshold: Option<ResolvedSettingInfo<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slow_call_duration_ms: Option<ResolvedSettingInfo<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slow_call_rate_threshold: Option<ResolvedSettingInfo<f64>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CircuitBreakerWire {
+    mode: ResolvedSettingInfo<CircuitBreakerMode>,
+    open_for_ms: ResolvedSettingInfo<u64>,
+    probes: ResolvedSettingInfo<u32>,
+    rate_limited_counts_as_failure: ResolvedSettingInfo<bool>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    consecutive_failures: Option<ResolvedSettingInfo<u32>>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    count_window: Option<ResolvedSettingInfo<u32>>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    minimum_calls: Option<ResolvedSettingInfo<u32>>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    failure_rate_threshold: Option<ResolvedSettingInfo<f64>>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    slow_call_duration_ms: Option<ResolvedSettingInfo<u64>>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    slow_call_rate_threshold: Option<ResolvedSettingInfo<f64>>,
+}
+
+impl<'de> Deserialize<'de> for CircuitBreakerInfo {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = CircuitBreakerWire::deserialize(deserializer)?;
+        let info = Self {
+            mode: wire.mode,
+            open_for_ms: wire.open_for_ms,
+            probes: wire.probes,
+            rate_limited_counts_as_failure: wire.rate_limited_counts_as_failure,
+            consecutive_failures: wire.consecutive_failures,
+            count_window: wire.count_window,
+            minimum_calls: wire.minimum_calls,
+            failure_rate_threshold: wire.failure_rate_threshold,
+            slow_call_duration_ms: wire.slow_call_duration_ms,
+            slow_call_rate_threshold: wire.slow_call_rate_threshold,
+        };
+        info.validate().map_err(serde::de::Error::custom)?;
+        Ok(info)
+    }
+}
 
 impl CircuitBreakerInfo {
+    pub fn mode(&self) -> &ResolvedSettingInfo<CircuitBreakerMode> {
+        &self.mode
+    }
+
+    pub fn open_for_ms(&self) -> &ResolvedSettingInfo<u64> {
+        &self.open_for_ms
+    }
+
+    pub fn probes(&self) -> &ResolvedSettingInfo<u32> {
+        &self.probes
+    }
+
+    pub fn rate_limited_counts_as_failure(&self) -> &ResolvedSettingInfo<bool> {
+        &self.rate_limited_counts_as_failure
+    }
+
+    pub fn consecutive_failures(&self) -> Option<&ResolvedSettingInfo<u32>> {
+        self.consecutive_failures.as_ref()
+    }
+
+    pub fn count_window(&self) -> Option<&ResolvedSettingInfo<u32>> {
+        self.count_window.as_ref()
+    }
+
+    pub fn minimum_calls(&self) -> Option<&ResolvedSettingInfo<u32>> {
+        self.minimum_calls.as_ref()
+    }
+
+    pub fn failure_rate_threshold(&self) -> Option<&ResolvedSettingInfo<f64>> {
+        self.failure_rate_threshold.as_ref()
+    }
+
+    pub fn slow_call_duration_ms(&self) -> Option<&ResolvedSettingInfo<u64>> {
+        self.slow_call_duration_ms.as_ref()
+    }
+
+    pub fn slow_call_rate_threshold(&self) -> Option<&ResolvedSettingInfo<f64>> {
+        self.slow_call_rate_threshold.as_ref()
+    }
+
+    pub(super) fn from_settings(mut settings: Settings) -> Result<Self, MiddlewareInfoError> {
+        let info = Self {
+            mode: required(&mut settings, "middleware.circuit_breaker.mode")?,
+            open_for_ms: required(&mut settings, "middleware.circuit_breaker.open_for_ms")?,
+            probes: required(&mut settings, "middleware.circuit_breaker.probes")?,
+            rate_limited_counts_as_failure: required(
+                &mut settings,
+                "middleware.circuit_breaker.rate_limited_counts_as_failure",
+            )?,
+            consecutive_failures: take(
+                &mut settings,
+                "middleware.circuit_breaker.consecutive_failures",
+            )?,
+            count_window: take(&mut settings, "middleware.circuit_breaker.count_window")?,
+            minimum_calls: take(&mut settings, "middleware.circuit_breaker.minimum_calls")?,
+            failure_rate_threshold: take(
+                &mut settings,
+                "middleware.circuit_breaker.failure_rate_threshold",
+            )?,
+            slow_call_duration_ms: take(
+                &mut settings,
+                "middleware.circuit_breaker.slow_call_duration_ms",
+            )?,
+            slow_call_rate_threshold: take(
+                &mut settings,
+                "middleware.circuit_breaker.slow_call_rate_threshold",
+            )?,
+        };
+        if let Some(key) = settings.keys().next() {
+            return Err(MiddlewareInfoError::new(
+                key,
+                "unknown field for this middleware family",
+            ));
+        }
+        info.validate()?;
+        Ok(info)
+    }
+
+    fn validate_fields(&self) -> Result<(), MiddlewareInfoError> {
+        validate_row("middleware.circuit_breaker.mode", &self.mode)?;
+        validate_row("middleware.circuit_breaker.open_for_ms", &self.open_for_ms)?;
+        validate_row("middleware.circuit_breaker.probes", &self.probes)?;
+        validate_row(
+            "middleware.circuit_breaker.rate_limited_counts_as_failure",
+            &self.rate_limited_counts_as_failure,
+        )?;
+        if let Some(row) = &self.consecutive_failures {
+            validate_row("middleware.circuit_breaker.consecutive_failures", row)?;
+        }
+        if let Some(row) = &self.count_window {
+            validate_row("middleware.circuit_breaker.count_window", row)?;
+        }
+        if let Some(row) = &self.minimum_calls {
+            validate_row("middleware.circuit_breaker.minimum_calls", row)?;
+        }
+        if let Some(row) = &self.failure_rate_threshold {
+            validate_row("middleware.circuit_breaker.failure_rate_threshold", row)?;
+        }
+        if let Some(row) = &self.slow_call_duration_ms {
+            validate_row("middleware.circuit_breaker.slow_call_duration_ms", row)?;
+        }
+        if let Some(row) = &self.slow_call_rate_threshold {
+            validate_row("middleware.circuit_breaker.slow_call_rate_threshold", row)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn validate(&self) -> Result<(), MiddlewareInfoError> {
         self.validate_fields()?;
         for (key, threshold) in [
@@ -180,12 +361,99 @@ impl CircuitBreakerInfo {
     }
 }
 
-checked_info!(RetryInfo, RetryWire, "middleware.retry.",
-    required { kind: RetryKind, max_attempts: u32, max_backoff_ms: u64, attempt_start_window_ms: u64 }
-    optional { fixed_delay_ms: u64 }
-);
+/// Resolved retry information with durations expressed in milliseconds.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RetryInfo {
+    kind: ResolvedSettingInfo<RetryKind>,
+    max_attempts: ResolvedSettingInfo<u32>,
+    max_backoff_ms: ResolvedSettingInfo<u64>,
+    attempt_start_window_ms: ResolvedSettingInfo<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixed_delay_ms: Option<ResolvedSettingInfo<u64>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetryWire {
+    kind: ResolvedSettingInfo<RetryKind>,
+    max_attempts: ResolvedSettingInfo<u32>,
+    max_backoff_ms: ResolvedSettingInfo<u64>,
+    attempt_start_window_ms: ResolvedSettingInfo<u64>,
+    #[serde(default, deserialize_with = "super::settings::present")]
+    fixed_delay_ms: Option<ResolvedSettingInfo<u64>>,
+}
+
+impl<'de> Deserialize<'de> for RetryInfo {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = RetryWire::deserialize(deserializer)?;
+        let info = Self {
+            kind: wire.kind,
+            max_attempts: wire.max_attempts,
+            max_backoff_ms: wire.max_backoff_ms,
+            attempt_start_window_ms: wire.attempt_start_window_ms,
+            fixed_delay_ms: wire.fixed_delay_ms,
+        };
+        info.validate().map_err(serde::de::Error::custom)?;
+        Ok(info)
+    }
+}
 
 impl RetryInfo {
+    pub fn kind(&self) -> &ResolvedSettingInfo<RetryKind> {
+        &self.kind
+    }
+
+    pub fn max_attempts(&self) -> &ResolvedSettingInfo<u32> {
+        &self.max_attempts
+    }
+
+    pub fn max_backoff_ms(&self) -> &ResolvedSettingInfo<u64> {
+        &self.max_backoff_ms
+    }
+
+    pub fn attempt_start_window_ms(&self) -> &ResolvedSettingInfo<u64> {
+        &self.attempt_start_window_ms
+    }
+
+    pub fn fixed_delay_ms(&self) -> Option<&ResolvedSettingInfo<u64>> {
+        self.fixed_delay_ms.as_ref()
+    }
+
+    pub(super) fn from_settings(mut settings: Settings) -> Result<Self, MiddlewareInfoError> {
+        let info = Self {
+            kind: required(&mut settings, "middleware.retry.kind")?,
+            max_attempts: required(&mut settings, "middleware.retry.max_attempts")?,
+            max_backoff_ms: required(&mut settings, "middleware.retry.max_backoff_ms")?,
+            attempt_start_window_ms: required(
+                &mut settings,
+                "middleware.retry.attempt_start_window_ms",
+            )?,
+            fixed_delay_ms: take(&mut settings, "middleware.retry.fixed_delay_ms")?,
+        };
+        if let Some(key) = settings.keys().next() {
+            return Err(MiddlewareInfoError::new(
+                key,
+                "unknown field for this middleware family",
+            ));
+        }
+        info.validate()?;
+        Ok(info)
+    }
+
+    fn validate_fields(&self) -> Result<(), MiddlewareInfoError> {
+        validate_row("middleware.retry.kind", &self.kind)?;
+        validate_row("middleware.retry.max_attempts", &self.max_attempts)?;
+        validate_row("middleware.retry.max_backoff_ms", &self.max_backoff_ms)?;
+        validate_row(
+            "middleware.retry.attempt_start_window_ms",
+            &self.attempt_start_window_ms,
+        )?;
+        if let Some(row) = &self.fixed_delay_ms {
+            validate_row("middleware.retry.fixed_delay_ms", row)?;
+        }
+        Ok(())
+    }
+
     pub fn try_new(
         kind: ResolvedSettingInfo<RetryKind>,
         max_attempts: ResolvedSettingInfo<u32>,
