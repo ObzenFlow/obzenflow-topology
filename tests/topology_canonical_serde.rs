@@ -16,11 +16,11 @@
 //!    validation identically.
 
 use obzenflow_topology::{
-    BackoffStrategy, BoundaryPortSpec, CircuitBreakerInfo, CompositePortRef, ContractInfo,
-    DirectedEdge, EdgeTypingInfo, EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo,
-    MiddlewareInfo, OpenPolicy, PortDirection, RateLimiterInfo, RetryInfo, StageInfo, StageStatus,
-    StageSubgraphMembership, StageType, StageTypingInfo, SubgraphInternalEdge, Topology,
-    TopologyBuilder, TopologySubgraphInfo, TypeHintInfo,
+    BoundaryPortSpec, CompositePortRef, ContractInfo, DirectedEdge, EdgeTypingInfo,
+    EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo, MiddlewareAttachmentInfo,
+    MiddlewareAuthoredSite, MiddlewareFamily, MiddlewareInfo, MiddlewareOperation, PortDirection,
+    StageInfo, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
+    SubgraphInternalEdge, Topology, TopologyBuilder, TopologySubgraphInfo, TypeHintInfo,
 };
 
 fn build_minimal_topology() -> Topology {
@@ -107,25 +107,17 @@ fn topology_round_trips_with_full_annotations() {
         .with_role(StageType::Transform.role())
         .with_is_cycle_member(false)
         .with_middleware(
-            MiddlewareInfo::new(vec!["rate_limiter".to_string(), "retry".to_string()])
-                .with_rate_limiter(RateLimiterInfo {
-                    tokens_per_sec: 10.0,
-                    burst_capacity: 20.0,
-                    configured_burst_capacity: Some(20.0),
-                    cost_per_event: 1.0,
-                    limit_rate: 10.0,
-                })
-                .with_circuit_breaker(CircuitBreakerInfo {
-                    threshold: 3,
-                    cooldown_ms: 1500,
-                    open_policy: OpenPolicy::FailFast,
-                    has_fallback: false,
-                })
-                .with_retry(RetryInfo {
-                    max_attempts: Some(5),
-                    backoff: BackoffStrategy::Exponential,
-                    base_delay_ms: Some(100),
+            MiddlewareInfo { attachments: vec![MiddlewareAttachmentInfo {
+                key: "promo_enriched:effect:lookup:rate_limiter".into(),
+                label: "rate_limiter".into(), family: MiddlewareFamily::RateLimiter,
+                authored_site: MiddlewareAuthoredSite::Effect { effect_type: "catalog.lookup".into() },
+                operation: MiddlewareOperation::Effect { effect_type: "catalog.lookup".into() },
+                configuration: serde_json::json!({
+                    "middleware.rate_limiter.events_per_second": { "value": 10.0, "source": "dsl", "scope": "stage:enriched" },
+                    "middleware.rate_limiter.burst_capacity": { "value": 20.0, "source": "dsl", "scope": "stage:enriched" },
+                    "middleware.rate_limiter.cost_per_attempt": { "value": 1.0, "source": "dsl", "scope": "stage:enriched" },
                 }),
+            }] },
         )
         .with_join_metadata(JoinMetadataInfo::new(vec![catalog_id], vec![stream_id]))
         .with_typing(StageTypingInfo {
@@ -235,10 +227,18 @@ fn topology_round_trips_with_full_annotations() {
     assert_eq!(join_meta.catalog_source_ids, vec![catalog_id]);
     assert_eq!(join_meta.stream_source_ids, vec![stream_id]);
     let middleware = join_back.middleware.as_ref().expect("middleware");
-    assert_eq!(middleware.stack, vec!["rate_limiter", "retry"]);
+    assert_eq!(middleware.attachments.len(), 1);
+    let limiter = &middleware.attachments[0];
+    assert_eq!(limiter.family, MiddlewareFamily::RateLimiter);
     assert_eq!(
-        middleware.circuit_breaker.as_ref().unwrap().open_policy,
-        OpenPolicy::FailFast
+        limiter.operation,
+        MiddlewareOperation::Effect {
+            effect_type: "catalog.lookup".into()
+        }
+    );
+    assert_eq!(
+        limiter.configuration["middleware.rate_limiter.burst_capacity"]["value"],
+        20.0
     );
     let subgraph = join_back.subgraph.as_ref().expect("subgraph membership");
     assert_eq!(subgraph.subgraph_id, "ai_map_reduce:digest");

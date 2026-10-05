@@ -2,102 +2,59 @@
 // SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
 // https://obzenflow.dev
 
-//! Stage middleware annotation (FLOWIP-059).
-//!
-//! Structured middleware configuration exposed as part of the canonical
-//! topology so clients (Studio, dashboards) can render rate limiting,
-//! circuit-breaker, and retry posture without hitting a runtime endpoint.
-//!
-//! These are static configuration snapshots, not live runtime metrics.
+//! Resolved middleware attachments in the canonical topology.
+//! These are build-time declarations and effective configuration, not live metrics.
 
 use serde::{Deserialize, Serialize};
 
-/// Middleware stack and configuration for one stage.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A stage's resolved middleware membership. Vector position has no execution meaning.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MiddlewareInfo {
-    /// Ordered list of middleware names in the stack (outermost first).
-    pub stack: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub circuit_breaker: Option<CircuitBreakerInfo>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rate_limiter: Option<RateLimiterInfo>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retry: Option<RetryInfo>,
+    pub attachments: Vec<MiddlewareAttachmentInfo>,
 }
 
-impl MiddlewareInfo {
-    pub fn new(stack: Vec<String>) -> Self {
-        Self {
-            stack,
-            circuit_breaker: None,
-            rate_limiter: None,
-            retry: None,
-        }
-    }
-
-    pub fn with_circuit_breaker(mut self, config: CircuitBreakerInfo) -> Self {
-        self.circuit_breaker = Some(config);
-        self
-    }
-
-    pub fn with_rate_limiter(mut self, config: RateLimiterInfo) -> Self {
-        self.rate_limiter = Some(config);
-        self
-    }
-
-    pub fn with_retry(mut self, config: RetryInfo) -> Self {
-        self.retry = Some(config);
-        self
-    }
-}
-
-/// Static circuit-breaker configuration.
+/// One resolved binding, carrying its semantic key and actual operation.
+/// Expanded observer bindings retain their logical grouping through site and label.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct CircuitBreakerInfo {
-    /// Number of failures before opening.
-    pub threshold: usize,
-    /// Cooldown before half-open, in milliseconds.
-    pub cooldown_ms: u64,
-    pub open_policy: OpenPolicy,
-    pub has_fallback: bool,
+#[serde(deny_unknown_fields)]
+pub struct MiddlewareAttachmentInfo {
+    pub key: String,
+    pub label: String,
+    pub family: MiddlewareFamily,
+    pub authored_site: MiddlewareAuthoredSite,
+    pub operation: MiddlewareOperation,
+    /// Built-ins map canonical config keys to `{ value, source, scope }` rows.
+    /// Custom attachments retain their definition's resolved key namespace.
+    pub configuration: serde_json::Value,
 }
 
-/// Behaviour while the circuit is open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OpenPolicy {
-    EmitFallback,
-    FailFast,
-    Skip,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MiddlewareFamily {
+    RateLimiter,
+    CircuitBreaker,
+    Retry,
+    Observer,
+    Custom { name: String },
 }
 
-/// Static rate-limiter configuration.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RateLimiterInfo {
-    pub tokens_per_sec: f64,
-    pub burst_capacity: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub configured_burst_capacity: Option<f64>,
-    pub cost_per_event: f64,
-    pub limit_rate: f64,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MiddlewareAuthoredSite {
+    Implementation,
+    Effect { effect_type: String },
 }
 
-/// Static retry policy configuration.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RetryInfo {
-    /// Maximum retry attempts; `None` means unbounded.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_attempts: Option<usize>,
-    pub backoff: BackoffStrategy,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_delay_ms: Option<u64>,
-}
-
-/// Retry backoff curve.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BackoffStrategy {
-    Fixed,
-    Exponential,
-    None,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MiddlewareOperation {
+    SourcePoll,
+    Ingress,
+    SinkDelivery,
+    Effect { effect_type: String },
+    Handler,
+    Stateful,
+    Join,
+    Lifecycle,
 }
