@@ -6,6 +6,39 @@ use obzenflow_topology::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+#[test]
+fn backpressure_plan_round_trips_and_rejects_invalid_settings() {
+    for wire in [
+        json!({"mode":"track"}),
+        json!({"mode":"enforce", "window":64, "stall_timeout_ms":30000}),
+    ] {
+        let info: BackpressureInfo = serde_json::from_value(wire.clone()).unwrap();
+        let mut edge = DirectedEdge::new(
+            StageId::from_bytes([1; 16]),
+            StageId::from_bytes([2; 16]),
+            EdgeKind::Forward,
+        );
+        edge.backpressure = Some(info);
+        let encoded = serde_json::to_value(&edge).unwrap();
+        assert_eq!(encoded["backpressure"], wire);
+        let decoded: DirectedEdge = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.backpressure, Some(info));
+    }
+    for invalid in [
+        json!({"mode":"track", "window":64}),
+        json!({"mode":"enforce", "window":0, "stall_timeout_ms":30000}),
+        json!({"mode":"enforce", "window":64, "stall_timeout_ms":0}),
+        json!({"mode":"enforce", "window":"64", "stall_timeout_ms":30000}),
+        json!({"mode":"enforce", "window":64}),
+        json!({"mode":"unknown"}),
+    ] {
+        assert!(
+            serde_json::from_value::<BackpressureInfo>(invalid.clone()).is_err(),
+            "{invalid}"
+        );
+    }
+}
+
 fn provenance() -> SettingProvenanceInfo {
     SettingProvenanceInfo::try_new(
         "profile".into(),

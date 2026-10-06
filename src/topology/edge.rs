@@ -29,8 +29,8 @@ impl std::fmt::Display for EdgeKind {
 /// Directed edge - explicit flow direction between stages.
 ///
 /// Structural fields (`from`, `to`, `kind`) drive validation and traversal.
-/// `contracts` and `typing` are optional product annotations populated during
-/// flow build (FLOWIP-114b). `composite_ports` is the reviewed structural
+/// `backpressure`, `contracts`, and `typing` are optional product annotations
+/// populated during flow build. `composite_ports` is the reviewed structural
 /// exception: it names a validated graph cut consumed by runtime boundary
 /// classification (FLOWIP-128a B4). Generic edge identity and traversal still
 /// use only the physical triple.
@@ -44,6 +44,11 @@ pub struct DirectedEdge {
     pub from: StageId,
     pub to: StageId,
     pub kind: EdgeKind,
+
+    /// Resolved transport policy, present before the first event or metric.
+    /// Omitted when this edge has no backpressure plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backpressure: Option<crate::BackpressureInfo>,
 
     /// Structural contracts attached to this edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,6 +73,7 @@ impl DirectedEdge {
             from,
             to,
             kind,
+            backpressure: None,
             contracts: None,
             typing: None,
             composite_ports: Vec::new(),

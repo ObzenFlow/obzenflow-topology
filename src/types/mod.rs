@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2025-2026 ObzenFlow Contributors
 // https://obzenflow.dev
 
+mod backpressure;
 pub mod contract;
 pub mod join;
 pub mod middleware;
@@ -21,6 +22,7 @@ pub struct Stage;
 pub type StageId = Id<Stage>;
 
 // Re-export stage type enums and the canonical annotation types.
+pub use backpressure::BackpressureInfo;
 pub use contract::ContractInfo;
 pub use join::JoinMetadataInfo;
 pub use middleware::{

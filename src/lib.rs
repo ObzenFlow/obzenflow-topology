@@ -36,10 +36,10 @@ pub use builder::TopologyBuilder;
 pub use stages::StageInfo;
 pub use topology::{DirectedEdge, EdgeKind, Topology, TopologyMetrics, ValidationLevel};
 pub use types::{
-    BoundaryPortSpec, CompositePortRef, ContractInfo, EdgeTypingInfo, EdgeTypingLabelSource,
-    EdgeTypingRole, JoinMetadataInfo, MiddlewareAttachmentInfo, MiddlewareAuthoredSite,
-    MiddlewareFamily, MiddlewareInfo, MiddlewareOperation, PortDirection, SccId, StageId,
-    StageRole, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
+    BackpressureInfo, BoundaryPortSpec, CompositePortRef, ContractInfo, EdgeTypingInfo,
+    EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo, MiddlewareAttachmentInfo,
+    MiddlewareAuthoredSite, MiddlewareFamily, MiddlewareInfo, MiddlewareOperation, PortDirection,
+    SccId, StageId, StageRole, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
     SubgraphInternalEdge, TopologySubgraphInfo, TypeHintInfo,
 };
 pub use types::{
