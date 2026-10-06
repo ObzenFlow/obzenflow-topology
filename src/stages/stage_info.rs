@@ -38,7 +38,7 @@ pub struct StageInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_cycle_member: Option<bool>,
 
-    /// Structured middleware configuration (FLOWIP-059).
+    /// Checked descriptive information about resolved middleware bindings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub middleware: Option<MiddlewareInfo>,
 
