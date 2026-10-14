@@ -6,7 +6,16 @@ This crate follows [Semantic Versioning](https://semver.org). It is pre-1.0, so
 a minor release (0.4 to 0.5) may contain breaking changes. Each one is called
 out below with the code you need to change.
 
-## [0.6.0] - Unreleased
+## [0.7.0] - Unreleased
+
+### Breaking changes
+
+- (FLOWIP-084q B8) `StageType` gains `Merge`, a processor stage that combines
+  producers of one type under a framework strategy. It serializes as `"merge"`.
+  `StageType` is matched exhaustively, so every consumer's `match` needs a
+  `StageType::Merge` arm. Producers and Studio adopt this release together.
+
+## [0.6.0]
 
 ### Breaking changes
 
