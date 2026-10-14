@@ -15,7 +15,7 @@ Pipeline execution is handled by the ObzenFlow runtime.
 
 ```toml
 [dependencies]
-obzenflow-topology = "0.6"
+obzenflow-topology = "0.7"
 ```
 
 Serde support is included. The crate works on native targets and

@@ -3,7 +3,7 @@
 Notable changes to `obzenflow-topology`, newest first. This crate is pre-1.0;
 breaking API and serialized-format changes are called out below.
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-10-14
 
 ### Breaking changes
 
