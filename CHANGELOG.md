@@ -1,177 +1,178 @@
 # Changelog
 
-Notable changes to `obzenflow-topology`, newest first. This crate is pre-1.0;
-breaking API and serialized-format changes are called out below.
+Notable changes to obzenflow-topology, newest first. Based on
+[Keep a Changelog][keep-a-changelog], with pre-1.0 [Semantic Versioning][semver].
+Compatibility notes cover the Rust API and serialized topology format.
+
+## [Unreleased]
 
 ## [0.7.0] - 2026-10-14
 
-### Breaking changes
+### Added
 
-- Added `StageType::Merge` for processor stages that combine streams of the
-  same type using a framework strategy. It serializes as `"merge"`. Add a
-  `StageType::Merge` arm to exhaustive matches on `StageType`, and upgrade
-  topology producers and Studio together.
+- **Breaking:** Support for merge stages, which combine streams carrying the
+  same event type. Exhaustive matches on `StageType` must handle `Merge`, and
+  JSON consumers must accept `"merge"`. Upgrade topology producers and Studio
+  together.
 
 ## [0.6.0]
 
-Middleware attachments now describe validated settings and where each setting
-came from.
+Middleware records now describe validated settings and where each value came
+from. Upgrade topology producers and Studio together; the previous middleware
+format is no longer accepted.
 
-### Breaking changes
+### Changed
 
-- `MiddlewareDetailsInfo` replaces separate family fields and arbitrary
-  configuration JSON. Built-in middleware carries typed resolved settings and
-  their provenance; observer and custom middleware carry typed scalar settings.
-  Read the family through `MiddlewareAttachmentInfo::family()` and built-in
-  settings through named getters.
-- Attachment keys use `MiddlewareAttachmentKey`, preserving their existing
-  128-bit identity. Serialized keys must use canonical uppercase ULID spelling
-  and be unique within a topology.
-- Deserialization rejects malformed settings, missing provenance, explicit null
-  for optional settings, invalid active modes, and duplicate attachment keys.
-  Omitted burst capacity still means automatic capacity; settings for inactive
-  modes are retained.
-- `Topology::replace_stage_info` returns a `ValidationResult`. Handle validation
-  errors; invalid middleware information or duplicate keys leave the topology
-  unchanged.
-- Upgrade topology producers and Studio together. The previous middleware
-  format is no longer accepted.
+- **Breaking:** Middleware settings use typed records in `MiddlewareDetailsInfo`
+  instead of arbitrary configuration JSON. Read the family through
+  `MiddlewareAttachmentInfo::family()` and built-in settings through named getters.
+  Observer and custom middleware retain typed scalar settings.
+- **Breaking:** Attachment keys must use canonical uppercase ULID spelling and
+  be unique within a topology. Use `MiddlewareAttachmentKey` in Rust; existing
+  128-bit identities are preserved.
+- **Breaking:** Loading middleware data rejects malformed settings, missing
+  information about where settings came from, invalid active modes, and explicit
+  null for optional settings. Omitted burst capacity still means automatic
+  capacity, and settings for inactive modes are retained.
+- **Breaking:** Updating stage information can fail validation. Handle the result
+  from `Topology::replace_stage_info`; invalid middleware information or duplicate
+  attachment keys leave the existing topology unchanged.
 
 ## [0.5.1] - 2026-07-10
 
-### Breaking changes
-
-- Edges crossing a composite boundary must identify each named port they cross.
-  Missing, partial, unknown, or endpoint-mismatched bindings fail validation.
-  Upgrade ObzenFlow and Studio together and regenerate 0.5.0 topology documents.
-
 ### Added
 
-- `CompositePortRef` and `DirectedEdge::composite_ports` record these bindings.
-  An edge between two composites carries a port reference for each composite.
+- Edges record the named composite ports they cross through
+  `DirectedEdge::composite_ports`. An edge between two composites records both ports.
+
+### Changed
+
+- **Breaking:** Connections across composite boundaries require complete port
+  bindings. Missing, unknown, or mismatched bindings fail validation. Upgrade
+  ObzenFlow and Studio together and regenerate 0.5.0 topology documents.
 
 ## [0.5.0] - 2026-07-09
 
-Composite subgraphs can describe patterns such as sagas or map-reduce as named
-units with boundary ports and classified member stages.
-
-### Breaking changes
-
-- `StageSubgraphMembership`, `TopologySubgraphInfo`, and `SubgraphInternalEdge`
-  are now `#[non_exhaustive]`. Replace struct literals with `::new(...)` and
-  `.with_*` setters. For example, replace
-  `SubgraphInternalEdge { from_stage_id, to_stage_id, role }` with
-  `SubgraphInternalEdge::new(from_stage_id, to_stage_id, role)`.
+Composite subgraphs describe patterns such as sagas or map-reduce as named units.
 
 ### Added
 
-- `BoundaryPortSpec` and `PortDirection` describe a composite's connection
-  points, member stages, and event types.
-- `StageSubgraphMembership::with_class()` adds an optional member classification,
-  such as a saga's `pivot` or `compensation` stage.
-- `TopologySubgraphInfo` gains `boundary_ports` and `schema_version`. Existing
-  0.4 manifests still load with defaults for the new fields.
+- Boundary ports describe where a composite connects to the rest of a pipeline,
+  including the member stages and event types at each connection.
+- Member stages can carry classifications, such as a saga's pivot or compensation
+  stage, through `StageSubgraphMembership::with_class()`.
+- Subgraph manifests include a schema version and boundary ports. Existing 0.4
+  manifests still load with defaults for the new fields.
 
 ### Changed
 
-- `SubgraphInternalEdge::role` describes an edge lane, such as `data` or `status`.
-  Its serialized field name remains `role`.
-- Member roles, port names, edge lane names, and subgraph kinds are stable
-  identifiers; renaming them is a breaking change.
+- **Breaking:** Build subgraph records with constructors and builder methods
+  instead of struct literals. This affects `StageSubgraphMembership`,
+  `TopologySubgraphInfo`, and `SubgraphInternalEdge`.
+- Internal edge roles describe connection lanes, such as data or status. The
+  serialized field name remains `role`. Member roles, port names, lane names,
+  and subgraph kinds are stable identifiers.
 
 ## [0.4.0] - 2026-05-08
 
-`Topology` becomes the shared `/api/topology` format for ObzenFlow and Studio,
-with typed annotations for stages, edges, and subgraphs.
-
-### Breaking changes
-
-- **`DirectedEdge` is no longer `Copy`.** Use `.clone()` where code relied on
-  copy semantics.
-- **`StageInfo` and `DirectedEdge` are now `#[non_exhaustive]`.** Replace struct
-  literals with `::new(...)` and `.with_*` setters:
-
-  ```rust
-  let edge = DirectedEdge::new(from, to, EdgeKind::Forward);
-  ```
-
-- **Enums serialize as `snake_case`.** Update consumers of `StageType`,
-  `StageRole`, and `EdgeKind` JSON. For example, `FiniteSource` becomes
-  `finite_source` and `Forward` becomes `forward`:
-
-  ```json
-  { "stage_type": "finite_source", "kind": "forward" }
-  ```
-
-- **Removed extension containers.** Replace `StageInfo::extensions`,
-  `StageExtensions`, and `EdgeExtensions` with typed `StageInfo::middleware`
-  and `DirectedEdge::{contracts, typing}` annotations.
-- **Other removals:** replace `StageMetadata` with `StageInfo` and
-  `Shape::stage_type()` with direct `StageType` classification.
-  `DirectedEdge::events_per_sec` is removed; metrics are exported through
-  `/metrics`.
+ObzenFlow and Studio share a single topology format through `/api/topology`.
 
 ### Added
 
-- `Serialize` and `Deserialize` for `Topology`, with traversal and cycle caches
-  rebuilt on load.
-- Typed annotations for flow names, API versions, subgraphs, stage status,
+- Complete topologies can be serialized and loaded, with graph caches rebuilt
+  on load.
+- Typed metadata describes flow names, API versions, subgraphs, stage status,
   roles, cycle membership, middleware, joins, contracts, and event types.
-- `populate_derived_stage_annotations()` fills stage roles and cycle membership;
-  `derive_edge_typings()` derives edge typing from stage typing;
-  `replace_stage_info()` replaces stage information after construction.
-- `TypeHintInfo::display_name()` strips Rust path qualifiers for display.
+- Helpers derive stage roles, cycle membership, and edge types from the graph,
+  and allow stage information to be updated after construction.
+- Event type names can be displayed without Rust module paths through
+  `TypeHintInfo::display_name()`.
 
 ### Changed
 
-- `Topology::flow_name()` prefers an explicit annotation, falling back to a name
-  derived from sources.
-- `DirectedEdge` equality and hashing use only `(from, to, kind)`, ignoring
-  annotations.
+- **Breaking:** Edges are no longer implicitly copied. Use `.clone()` where code
+  relied on `DirectedEdge` being `Copy`.
+- **Breaking:** Build `StageInfo` and `DirectedEdge` with constructors and builder
+  methods instead of struct literals.
+- **Breaking:** Stage types, roles, and edge kinds use snake_case in JSON. Update
+  values such as `FiniteSource` to `finite_source` and `Forward` to `forward`.
+- Explicit flow names take precedence over names derived from source stages.
+- Edge equality and hashing consider only endpoints and direction, ignoring
+  metadata.
+
+### Removed
+
+- **Breaking:** Untyped extension containers (`StageInfo::extensions`,
+  `StageExtensions`, and `EdgeExtensions`). Use `StageInfo::middleware` and
+  `DirectedEdge::{contracts, typing}` for typed metadata.
+- **Breaking:** `StageMetadata`; use `StageInfo`.
+- **Breaking:** Per-edge event rates (`DirectedEdge::events_per_sec`); use `/metrics`.
+- **Breaking:** `Shape::stage_type()`; classify stages with `StageType` directly.
 
 ## [0.3.1] - 2026-03-01
 
-- Added the Developer Certificate of Origin and required DCO sign-off on pull
-  requests, with contribution provenance and SPDX guidance in `CONTRIBUTING.md`.
+### Added
+
+- Required Developer Certificate of Origin sign-off for pull requests, with
+  contribution provenance and licence-header guidance in `CONTRIBUTING.md`.
+
+### Changed
+
 - Clarified trademark ownership and updated licence copyright years to 2025–2026.
 
 ## [0.3.0] - 2026-02-19
 
-- Added `SccId`, `Topology::scc_id(stage)`, and `Topology::scc_members(id)` for
-  identifying groups of stages in feedback loops. `scc_id` returns `None` for
-  stages outside a cycle.
-- Component IDs are derived from the smallest member `StageId` and remain
-  stable across constructions of the same topology.
-- Added SPDX licence headers.
+### Added
+
+- Queries identify groups of stages in feedback loops through
+  `Topology::scc_id(stage)` and `Topology::scc_members(id)`. Component IDs remain
+  stable across constructions of the same topology; stages outside a cycle
+  return `None` from `scc_id`.
+- SPDX licence headers.
 
 ## [0.2.0] - 2025-12-03
 
-Validation now checks whether connections are legal for each stage's role.
-
-### Breaking changes
-
-- `StageInfo` requires a `stage_type: StageType`, `DirectedEdge` requires a
-  `kind: EdgeKind`, and `TopologyBuilder::add_stage_with_id` takes a `StageType`.
-- `Topology::new` runs full validation, including connection semantics and
-  reachability.
+Validation checks whether connections are legal for each stage's role.
 
 ### Added
 
-- `StageRole` (`Producer`, `Processor`, `Consumer`) and `EdgeKind` (`Forward`,
-  `Backward`) describe connection semantics.
-- `ValidationLevel`, `Topology::new_unvalidated()`,
-  `TopologyBuilder::build_unchecked()`, and `Topology::validate_with_level()`
-  support structural-only construction and validation on demand.
-- Role-based `semantic_source_stages()` and `semantic_sink_stages()`, plus
-  `NoSources`, `NoSinks`, `UnreachableStages`, `UnproductiveStages`, and
-  `InvalidConnection` errors.
+- Stage roles and edge directions distinguish sources, processors, consumers,
+  and backflow connections.
+- Draft graphs can be built with structural checks and fully validated later.
+  Use `Topology::new_unvalidated()` or `TopologyBuilder::build_unchecked()`,
+  then `Topology::validate_with_level()` when ready.
+- Queries identify sources and sinks by role. Validation errors explain invalid
+  connections, missing sources or sinks, and stages that cannot participate in
+  a source-to-sink path.
+
+### Changed
+
+- **Breaking:** Stage definitions require a `StageType`, and connections require
+  an `EdgeKind`. Also pass a stage type to `TopologyBuilder::add_stage_with_id`.
+- **Breaking:** `Topology::new` checks connection semantics and source-to-sink
+  reachability in addition to graph structure.
 
 ## [0.1.0] - 2025-08-14
 
 Initial standalone release of the graph model shared by ObzenFlow's backend
 and frontend, including WASM targets.
 
-- Stage and edge types, ULID stage IDs, and `TopologyBuilder`.
+### Added
+
+- Stage and edge types, ULID stage IDs, and a topology builder.
 - Connectivity checks and cycle detection, with support for multi-stage
   feedback loops and rejection of self-connections.
 - Dual MIT OR Apache-2.0 licensing.
+
+[keep-a-changelog]: https://keepachangelog.com/en/2.0.0/
+[semver]: https://semver.org/spec/v2.0.0.html
+[Unreleased]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/2679fa23eb17e75a585a6b3c8a597bc4e3cf2df7...v0.5.0
+[0.4.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.3.1...2679fa23eb17e75a585a6b3c8a597bc4e3cf2df7
+[0.3.1]: https://github.com/ObzenFlow/obzenflow-topology/compare/3d500c39ca00748c428d8b9c3dff3baf41ae494e...v0.3.1
+[0.3.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/9c6fda1789a9152f4094b1224d1522d56b165483...3d500c39ca00748c428d8b9c3dff3baf41ae494e
+[0.2.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/8b1ada9871fe47fee37ceed21689f07c54bed928...9c6fda1789a9152f4094b1224d1522d56b165483
+[0.1.0]: https://github.com/ObzenFlow/obzenflow-topology/commit/8b1ada9871fe47fee37ceed21689f07c54bed928
