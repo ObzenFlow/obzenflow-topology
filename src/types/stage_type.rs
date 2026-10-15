@@ -31,6 +31,9 @@ pub enum StageType {
 
     /// Stage that joins events from multiple upstream sources
     Join,
+
+    /// Stage that combines producers of one type under a framework strategy
+    Merge,
 }
 
 impl StageType {
@@ -73,6 +76,7 @@ impl StageType {
             StageType::Sink => "sink",
             StageType::Stateful => "stateful",
             StageType::Join => "join",
+            StageType::Merge => "merge",
         }
     }
 }
@@ -112,8 +116,27 @@ impl StageType {
     pub fn role(&self) -> StageRole {
         match self {
             StageType::FiniteSource | StageType::InfiniteSource => StageRole::Producer,
-            StageType::Transform | StageType::Stateful | StageType::Join => StageRole::Processor,
+            StageType::Transform | StageType::Stateful | StageType::Join | StageType::Merge => {
+                StageRole::Processor
+            }
             StageType::Sink => StageRole::Consumer,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_is_a_processor_spelled_merge() {
+        assert_eq!(StageType::Merge.role(), StageRole::Processor);
+        assert_eq!(StageType::Merge.as_str(), "merge");
+        assert_eq!(
+            serde_json::to_string(&StageType::Merge).unwrap(),
+            "\"merge\""
+        );
+        assert!(StageType::Merge.consumes_events());
+        assert!(!StageType::Merge.is_source());
     }
 }
