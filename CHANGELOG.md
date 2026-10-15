@@ -1,12 +1,9 @@
 # Changelog
 
-Notable changes to obzenflow-topology, newest first. Based on
-[Keep a Changelog][keep-a-changelog], with pre-1.0 [Semantic Versioning][semver].
+Notable changes to obzenflow-topology, newest first. This crate is pre-1.0.
 Compatibility notes cover the Rust API and serialized topology format.
 
-## [Unreleased]
-
-## [0.7.0] - 2026-10-14
+## 0.7.0 - 2026-10-14
 
 ### Added
 
@@ -15,7 +12,7 @@ Compatibility notes cover the Rust API and serialized topology format.
   JSON consumers must accept `"merge"`. Upgrade topology producers and Studio
   together.
 
-## [0.6.0]
+## 0.6.0
 
 Middleware records now describe validated settings and where each value came
 from. Upgrade topology producers and Studio together; the previous middleware
@@ -38,7 +35,7 @@ format is no longer accepted.
   from `Topology::replace_stage_info`; invalid middleware information or duplicate
   attachment keys leave the existing topology unchanged.
 
-## [0.5.1] - 2026-07-10
+## 0.5.1 - 2026-07-10
 
 ### Added
 
@@ -51,7 +48,7 @@ format is no longer accepted.
   bindings. Missing, unknown, or mismatched bindings fail validation. Upgrade
   ObzenFlow and Studio together and regenerate 0.5.0 topology documents.
 
-## [0.5.0] - 2026-07-09
+## 0.5.0 - 2026-07-09
 
 Composite subgraphs describe patterns such as sagas or map-reduce as named units.
 
@@ -73,7 +70,7 @@ Composite subgraphs describe patterns such as sagas or map-reduce as named units
   serialized field name remains `role`. Member roles, port names, lane names,
   and subgraph kinds are stable identifiers.
 
-## [0.4.0] - 2026-05-08
+## 0.4.0 - 2026-05-08
 
 ObzenFlow and Studio share a single topology format through `/api/topology`.
 
@@ -109,7 +106,7 @@ ObzenFlow and Studio share a single topology format through `/api/topology`.
 - **Breaking:** Per-edge event rates (`DirectedEdge::events_per_sec`); use `/metrics`.
 - **Breaking:** `Shape::stage_type()`; classify stages with `StageType` directly.
 
-## [0.3.1] - 2026-03-01
+## 0.3.1 - 2026-03-01
 
 ### Added
 
@@ -120,7 +117,7 @@ ObzenFlow and Studio share a single topology format through `/api/topology`.
 
 - Clarified trademark ownership and updated licence copyright years to 2025–2026.
 
-## [0.3.0] - 2026-02-19
+## 0.3.0 - 2026-02-19
 
 ### Added
 
@@ -130,7 +127,7 @@ ObzenFlow and Studio share a single topology format through `/api/topology`.
   return `None` from `scc_id`.
 - SPDX licence headers.
 
-## [0.2.0] - 2025-12-03
+## 0.2.0 - 2025-12-03
 
 Validation checks whether connections are legal for each stage's role.
 
@@ -152,7 +149,7 @@ Validation checks whether connections are legal for each stage's role.
 - **Breaking:** `Topology::new` checks connection semantics and source-to-sink
   reachability in addition to graph structure.
 
-## [0.1.0] - 2025-08-14
+## 0.1.0 - 2025-08-14
 
 Initial standalone release of the graph model shared by ObzenFlow's backend
 and frontend, including WASM targets.
@@ -163,16 +160,3 @@ and frontend, including WASM targets.
 - Connectivity checks and cycle detection, with support for multi-stage
   feedback loops and rejection of self-connections.
 - Dual MIT OR Apache-2.0 licensing.
-
-[keep-a-changelog]: https://keepachangelog.com/en/2.0.0/
-[semver]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.5.1...v0.6.0
-[0.5.1]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/2679fa23eb17e75a585a6b3c8a597bc4e3cf2df7...v0.5.0
-[0.4.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/v0.3.1...2679fa23eb17e75a585a6b3c8a597bc4e3cf2df7
-[0.3.1]: https://github.com/ObzenFlow/obzenflow-topology/compare/3d500c39ca00748c428d8b9c3dff3baf41ae494e...v0.3.1
-[0.3.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/9c6fda1789a9152f4094b1224d1522d56b165483...3d500c39ca00748c428d8b9c3dff3baf41ae494e
-[0.2.0]: https://github.com/ObzenFlow/obzenflow-topology/compare/8b1ada9871fe47fee37ceed21689f07c54bed928...9c6fda1789a9152f4094b1224d1522d56b165483
-[0.1.0]: https://github.com/ObzenFlow/obzenflow-topology/commit/8b1ada9871fe47fee37ceed21689f07c54bed928
