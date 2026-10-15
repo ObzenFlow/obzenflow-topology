@@ -1,7 +1,10 @@
 # Changelog
 
-Notable changes to obzenflow-topology, newest first. This crate is pre-1.0.
+Notable changes to obzenflow-topology, newest first. Based on
+[Keep a Changelog][keep-a-changelog], with pre-1.0 [Semantic Versioning][semver].
 Compatibility notes cover the Rust API and serialized topology format.
+
+## Unreleased
 
 ## 0.7.0 - 2026-10-14
 
@@ -160,3 +163,6 @@ and frontend, including WASM targets.
 - Connectivity checks and cycle detection, with support for multi-stage
   feedback loops and rejection of self-connections.
 - Dual MIT OR Apache-2.0 licensing.
+
+[keep-a-changelog]: https://keepachangelog.com/en/2.0.0/
+[semver]: https://semver.org/spec/v2.0.0.html
