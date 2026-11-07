@@ -478,6 +478,68 @@ fn derive_edge_typings_classifies_join_legs_and_forwards() {
 }
 
 #[test]
+fn derive_edge_typings_preset_typing_kept() {
+    let mut builder = TopologyBuilder::new();
+    let triage = builder.add_stage(Some("triage".to_string()));
+    builder.reset_current();
+    let accepted = builder.add_stage(Some("accepted".to_string()));
+    builder.reset_current();
+    let rejected = builder.add_stage(Some("rejected".to_string()));
+    builder.reset_current();
+    builder.add_edge(triage, accepted);
+    builder.add_edge(triage, rejected);
+    let built = builder.build_unchecked().expect("topology should build");
+
+    let outputs = TypeHintInfo::mixed(["OrderAccepted", "OrderRejected"]);
+    let mut triage_typing = StageTypingInfo::empty();
+    triage_typing.output_type = outputs.clone();
+    let stages: Vec<StageInfo> = built
+        .stages()
+        .cloned()
+        .map(|stage| {
+            if stage.id == triage {
+                stage.with_typing(triage_typing.clone())
+            } else {
+                stage
+            }
+        })
+        .collect();
+    let produced = EdgeTypingInfo::new(
+        EdgeTypingRole::Input,
+        EdgeTypingLabelSource::UpstreamOutputType,
+        TypeHintInfo::exact("OrderAccepted"),
+    );
+    let edges: Vec<DirectedEdge> = built
+        .edges()
+        .iter()
+        .cloned()
+        .map(|mut edge| {
+            if edge.to == accepted {
+                edge.typing = Some(produced.clone());
+            }
+            edge
+        })
+        .collect();
+
+    let derived = Topology::new_unvalidated(stages, edges)
+        .expect("rebuild")
+        .derive_edge_typings();
+    let typing_to = |to| {
+        derived
+            .edges()
+            .iter()
+            .find(|edge| edge.to == to)
+            .and_then(|edge| edge.typing.clone())
+    };
+
+    assert_eq!(typing_to(accepted), Some(produced));
+    assert_eq!(
+        typing_to(rejected).map(|typing| typing.payload_type),
+        Some(outputs)
+    );
+}
+
+#[test]
 fn flow_name_prefers_annotation_over_derived() {
     let topology = build_minimal_topology().with_flow_name("custom_flow");
     assert_eq!(topology.flow_name(), "custom_flow");

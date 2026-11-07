@@ -456,7 +456,9 @@ impl Topology {
     /// Derive per-edge `typing` annotations from the already-attached stage
     /// `typing` and `join_metadata` annotations (FLOWIP-114b).
     ///
-    /// For forward edges:
+    /// Edges that already carry `typing` keep it, so a producer that knows
+    /// exactly which types cross an edge can set them first. For the other
+    /// forward edges:
     ///
     /// - When the downstream stage is a join with `join_metadata` populated,
     ///   the upstream is classified as `reference` (using the join's
@@ -467,8 +469,6 @@ impl Topology {
     ///   fallback.
     /// - Edges with no derivable label, and all backward edges, are left
     ///   with `typing = None`.
-    ///
-    /// Existing edge `typing` annotations are overwritten.
     pub fn derive_edge_typings(mut self) -> Self {
         use crate::types::typing::{
             EdgeTypingInfo, EdgeTypingLabelSource, EdgeTypingRole, TypeHintInfo,
@@ -485,8 +485,10 @@ impl Topology {
             });
 
         for edge in self.edges.iter_mut() {
+            if edge.typing.is_some() {
+                continue;
+            }
             if edge.kind != crate::topology::EdgeKind::Forward {
-                edge.typing = None;
                 continue;
             }
 
