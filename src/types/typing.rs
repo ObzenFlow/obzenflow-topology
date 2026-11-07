@@ -18,13 +18,13 @@ use serde::{Deserialize, Serialize};
 ///
 /// `Unspecified` means no contract was declared. `Exact` carries the raw
 /// captured type identifier (from `stringify!($ty)` or `type_name::<T>()`).
-/// `Mixed` indicates that more than one type can flow through this position.
+/// `Mixed` names each of the types that can flow through this position.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TypeHintInfo {
     Unspecified,
     Exact { name: String },
-    Mixed,
+    Mixed { names: Vec<String> },
 }
 
 impl TypeHintInfo {
@@ -33,11 +33,22 @@ impl TypeHintInfo {
         Self::Exact { name: name.into() }
     }
 
+    /// Convenience constructor for a hint naming several types.
+    pub fn mixed<I>(names: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<String>,
+    {
+        Self::Mixed {
+            names: names.into_iter().map(Into::into).collect(),
+        }
+    }
+
     /// Render the raw type name for UI display.
     ///
-    /// Strips Rust path qualifiers (`crate::module::Type` -> `Type`) and splits
-    /// CamelCase boundaries into spaces. Leaves generics intact. Returns
-    /// `None` for `Unspecified` and `Mixed`.
+    /// Strips Rust path qualifiers (`crate::module::Type` -> `Type`), including
+    /// inside generics. `Mixed` renders as a set, `{ A, B }`. Returns `None`
+    /// for `Unspecified`.
     ///
     /// This is the conservative v0.5 formatter. Studio overlay feedback may
     /// drive future refinement; clients must treat the result as render-only
@@ -45,7 +56,16 @@ impl TypeHintInfo {
     pub fn display_name(&self) -> Option<String> {
         match self {
             TypeHintInfo::Exact { name } => Some(format_display_name(name)),
-            TypeHintInfo::Unspecified | TypeHintInfo::Mixed => None,
+            TypeHintInfo::Mixed { names } => Some(format!(
+                "{{ {} }}",
+                names
+                    .iter()
+                    .map(String::as_str)
+                    .map(format_display_name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+            TypeHintInfo::Unspecified => None,
         }
     }
 }
@@ -214,9 +234,17 @@ mod tests {
     }
 
     #[test]
-    fn unspecified_and_mixed_render_to_none() {
+    fn display_name_unspecified_returns_none() {
         assert_eq!(TypeHintInfo::Unspecified.display_name(), None);
-        assert_eq!(TypeHintInfo::Mixed.display_name(), None);
+    }
+
+    #[test]
+    fn display_name_mixed_returns_member_set() {
+        let hint = TypeHintInfo::mixed(["orders::OrderPlaced", "Vec<orders::OrderCancelled>"]);
+        assert_eq!(
+            hint.display_name().as_deref(),
+            Some("{ OrderPlaced, Vec<OrderCancelled> }")
+        );
     }
 
     #[test]
@@ -224,12 +252,17 @@ mod tests {
         for hint in [
             TypeHintInfo::Unspecified,
             TypeHintInfo::exact("Foo::Bar"),
-            TypeHintInfo::Mixed,
+            TypeHintInfo::mixed(["Foo::Bar", "Foo::Baz"]),
         ] {
             let json = serde_json::to_string(&hint).unwrap();
             let back: TypeHintInfo = serde_json::from_str(&json).unwrap();
             assert_eq!(back, hint);
         }
+    }
+
+    #[test]
+    fn mixed_hint_without_names_refused() {
+        assert!(serde_json::from_str::<TypeHintInfo>(r#"{"kind":"mixed"}"#).is_err());
     }
 
     #[test]

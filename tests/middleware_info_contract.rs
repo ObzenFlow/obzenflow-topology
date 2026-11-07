@@ -6,6 +6,8 @@ use obzenflow_topology::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+const RATE: &str = "middleware.rate_limiter.events_per_second";
+
 #[test]
 fn backpressure_plan_round_trips_and_rejects_invalid_settings() {
     for wire in [
@@ -48,39 +50,56 @@ fn provenance() -> SettingProvenanceInfo {
     .unwrap()
 }
 
-fn setting<T>(value: T) -> ResolvedSettingInfo<T> {
-    ResolvedSettingInfo {
-        value,
-        provenance: provenance(),
+fn active(value: SettingValueInfo, display: &str) -> MiddlewareSettingInfo {
+    MiddlewareSettingInfo::Active {
+        setting: ResolvedSettingInfo {
+            value,
+            provenance: provenance(),
+        },
+        display: display.into(),
     }
 }
 
-fn row(value: Value) -> Value {
-    json!({"value":value,"provenance":provenance()})
+fn row(state: &str, value: Value, display: &str) -> Value {
+    json!({"state":state,"value":value,"provenance":provenance(),"display":display})
+}
+
+fn limiter_wire() -> Value {
+    let rate = row("active", json!({"kind":"f64","value":10.0}), "10 events/s");
+    let cost = row("active", json!({"kind":"f64","value":1.0}), "1 tokens");
+    json!({"kind":"rate_limiter","info":{"summary":"10","settings":{
+        RATE:rate,
+        "middleware.rate_limiter.cost_per_attempt":cost,
+        "middleware.rate_limiter.burst_capacity":{"state":"automatic","display":"Automatic"}
+    }}})
+}
+
+fn breaker_wire() -> Value {
+    let count = |state: &str, value: u64, display: &str| {
+        row(state, json!({"kind":"u64","value":value}), display)
+    };
+    let mode = row(
+        "active",
+        json!({"kind":"text","value":"consecutive"}),
+        "Consecutive failures",
+    );
+    json!({"kind":"circuit_breaker","info":{"summary":"3 consecutive failures","settings":{
+        "middleware.circuit_breaker.mode":mode,
+        "middleware.circuit_breaker.consecutive_failures":count("active", 3, "3"),
+        "middleware.circuit_breaker.count_window":count("inactive", 10, "10 calls"),
+        "middleware.circuit_breaker.minimum_calls":count("inactive", 11, "11 calls")
+    }}})
+}
+
+fn retry_wire() -> Value {
+    json!({"kind":"retry","info":{"settings":{
+        "middleware.retry.kind":row("active", json!({"kind":"text","value":"fixed"}), "Fixed"),
+        "middleware.retry.on_refusal":row("active", json!({"kind":"text","value":"wait"}), "Wait")
+    }}})
 }
 
 fn limiter() -> MiddlewareDetailsInfo {
-    MiddlewareDetailsInfo::RateLimiter(
-        RateLimiterInfo::try_new(setting(10.0), setting(1.0), None).unwrap(),
-    )
-}
-
-fn breaker_wire(mode: &str) -> Value {
-    json!({"kind":"circuit_breaker","info":{
-        "mode":row(json!(mode)),"open_for_ms":row(json!(60000)),"probes":row(json!(1)),
-        "rate_limited_counts_as_failure":row(json!(false)),
-        "consecutive_failures":row(json!(3)),"count_window":row(json!(10)),
-        "minimum_calls":row(json!(5)),"failure_rate_threshold":row(json!(0.6)),
-        "slow_call_duration_ms":row(json!(250)),"slow_call_rate_threshold":row(json!(0.5))
-    }})
-}
-
-fn retry_wire(kind: &str) -> Value {
-    json!({"kind":"retry","info":{
-        "kind":row(json!(kind)),"max_attempts":row(json!(3)),
-        "max_backoff_ms":row(json!(30000)),"attempt_start_window_ms":row(json!(120000)),
-        "fixed_delay_ms":row(json!(250))
-    }})
+    serde_json::from_value(limiter_wire()).unwrap()
 }
 
 fn attachment(id: u128, details: MiddlewareDetailsInfo) -> MiddlewareAttachmentInfo {
@@ -99,33 +118,40 @@ fn attachment(id: u128, details: MiddlewareDetailsInfo) -> MiddlewareAttachmentI
 
 #[test]
 fn every_family_preserves_all_binding_information_and_provenance() {
-    let extension = MiddlewareExtensionInfo::try_new(BTreeMap::from([
-        (
-            "extension.enabled".into(),
-            setting(SettingValueInfo::Bool(true)),
-        ),
-        (
-            "extension.count".into(),
-            setting(SettingValueInfo::U64(u64::MAX)),
-        ),
-        (
-            "extension.ratio".into(),
-            setting(SettingValueInfo::F64(-1.25)),
-        ),
-        (
-            "extension.label".into(),
-            setting(SettingValueInfo::Text("opaque".into())),
-        ),
-        (
-            "extension.secret".into(),
-            setting(SettingValueInfo::Redacted),
-        ),
-    ]))
+    for wire in [limiter_wire(), breaker_wire(), retry_wire()] {
+        let details: MiddlewareDetailsInfo = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(details).unwrap(), wire);
+    }
+    let extension = MiddlewareSettingsInfo::try_new(
+        BTreeMap::from([
+            (
+                "extension.enabled".into(),
+                active(SettingValueInfo::Bool(true), "true"),
+            ),
+            (
+                "extension.count".into(),
+                active(SettingValueInfo::U64(u64::MAX), "18446744073709551615"),
+            ),
+            (
+                "extension.ratio".into(),
+                active(SettingValueInfo::F64(-1.25), "-1.25"),
+            ),
+            (
+                "extension.label".into(),
+                active(SettingValueInfo::Text("opaque".into()), "opaque"),
+            ),
+            (
+                "extension.secret".into(),
+                active(SettingValueInfo::Redacted, "Redacted"),
+            ),
+        ]),
+        None,
+    )
     .unwrap();
     let details = vec![
         limiter(),
-        serde_json::from_value(breaker_wire("rate_based")).unwrap(),
-        serde_json::from_value(retry_wire("fixed")).unwrap(),
+        serde_json::from_value(breaker_wire()).unwrap(),
+        serde_json::from_value(retry_wire()).unwrap(),
         MiddlewareDetailsInfo::Observer(extension.clone()),
         MiddlewareDetailsInfo::Custom {
             name: "custom-family".into(),
@@ -137,13 +163,6 @@ fn every_family_preserves_all_binding_information_and_provenance() {
         .enumerate()
         .map(|(i, d)| attachment(i as u128, d))
         .collect();
-    // The operation remains an effect even where the winner was an unqualified broadcast.
-    if let MiddlewareDetailsInfo::RateLimiter(info) = &attachments[0].details {
-        assert_eq!(
-            info.events_per_second().provenance.winner_subject,
-            SettingSubject::Unqualified
-        );
-    }
     attachments[3].authored_site = MiddlewareAuthoredSite::Implementation;
     attachments[3].operation = MiddlewareOperation::SinkDelivery;
     let original = MiddlewareInfo::try_new(attachments).unwrap();
@@ -161,40 +180,11 @@ fn every_family_preserves_all_binding_information_and_provenance() {
 }
 
 #[test]
-fn omission_is_automatic_but_explicit_null_and_bad_known_fields_are_errors() {
-    let valid = serde_json::to_value(limiter()).unwrap();
-    assert!(valid["info"].get("burst_capacity").is_none());
-    assert!(serde_json::from_value::<MiddlewareDetailsInfo>(valid.clone()).is_ok());
-    for (key, value) in [
-        ("burst_capacity", Value::Null),
-        ("events_per_second", row(json!("10"))),
-        ("events_per_second", row(json!(0.0))),
-        ("events_per_second", row(json!(-1.0))),
-        ("cost_per_attempt", row(json!(0.0))),
-        ("burst_capacity", row(json!(0.5))),
-        ("events_per_second_typo", row(json!(10.0))),
-    ] {
-        let mut malformed = valid.clone();
-        malformed["info"][key] = value;
-        assert!(
-            serde_json::from_value::<MiddlewareDetailsInfo>(malformed).is_err(),
-            "{key}"
-        );
-    }
-    let mut missing = valid;
-    missing["info"]
-        .as_object_mut()
-        .unwrap()
-        .remove("cost_per_attempt");
-    assert!(serde_json::from_value::<MiddlewareDetailsInfo>(missing).is_err());
-}
-
-#[test]
 fn nested_provenance_is_required_checked_and_open_axes_round_trip() {
     let original = serde_json::to_value(limiter()).unwrap();
     for path in ["source", "scope", "winner_subject"] {
         let mut malformed = original.clone();
-        malformed["info"]["events_per_second"]["provenance"]
+        malformed["info"]["settings"][RATE]["provenance"]
             .as_object_mut()
             .unwrap()
             .remove(path);
@@ -208,137 +198,63 @@ fn nested_provenance_is_required_checked_and_open_axes_round_trip() {
         json!({"source":"dsl","scope":"global","winner_subject":{"kind":"unqualified"},"oops":1}),
     ] {
         let mut malformed = original.clone();
-        malformed["info"]["events_per_second"]["provenance"] = replacement;
+        malformed["info"]["settings"][RATE]["provenance"] = replacement;
         assert!(serde_json::from_value::<MiddlewareDetailsInfo>(malformed).is_err());
     }
     let mut exact = original;
-    exact["info"]["events_per_second"]["provenance"]["winner_subject"] =
+    exact["info"]["settings"][RATE]["provenance"]["winner_subject"] =
         json!({"kind":"effect","effect_type":"payments.authorize"});
     let back: MiddlewareDetailsInfo = serde_json::from_value(exact.clone()).unwrap();
     assert_eq!(serde_json::to_value(back).unwrap(), exact);
 }
 
 #[test]
-fn active_modes_are_complete_and_inactive_rows_survive() {
-    for mode in ["consecutive", "rate_based"] {
-        let wire = breaker_wire(mode);
-        let back: MiddlewareDetailsInfo = serde_json::from_value(wire.clone()).unwrap();
-        assert_eq!(serde_json::to_value(back).unwrap(), wire);
-    }
-    for kind in ["fixed", "exponential"] {
-        let wire = retry_wire(kind);
-        let back: MiddlewareDetailsInfo = serde_json::from_value(wire.clone()).unwrap();
-        assert_eq!(serde_json::to_value(back).unwrap(), wire);
-    }
-    for (mut wire, field) in [
-        (breaker_wire("consecutive"), "consecutive_failures"),
-        (breaker_wire("rate_based"), "count_window"),
-        (breaker_wire("rate_based"), "minimum_calls"),
-        (breaker_wire("rate_based"), "slow_call_duration_ms"),
-        (retry_wire("fixed"), "fixed_delay_ms"),
+fn malformed_rows_refused() {
+    let count = json!({"kind":"u64","value":5});
+    let breaker =
+        |key: &str, row: Value| json!({"kind":"circuit_breaker","info":{"settings":{key:row}}});
+    let probes = "middleware.circuit_breaker.probes";
+    for wire in [
+        json!({"kind":"observer","info":{"settings":{" ":row("active", count.clone(), "5")}}}),
+        breaker(
+            "middleware.retry.max_attempts",
+            row("active", count.clone(), "5"),
+        ),
+        breaker(
+            "middleware.circuit_breaker.",
+            row("active", count.clone(), "5"),
+        ),
+        breaker(
+            probes,
+            json!({"state":"active","provenance":provenance(),"display":"5"}),
+        ),
+        breaker(
+            probes,
+            json!({"state":"inactive","value":count,"display":"5"}),
+        ),
+        breaker(probes, row("automatic", count.clone(), "Automatic")),
+        breaker(probes, row("active", count.clone(), " ")),
+        breaker(probes, json!({"state":"automatic","display":null})),
+        breaker(
+            probes,
+            json!({
+                "state":"active","value":count,"provenance":provenance(),
+                "display":"5","unit":"calls"
+            }),
+        ),
+        breaker(probes, json!({"state":"disabled","display":"5"})),
+        json!({"kind":"circuit_breaker","info":{"summary":"","settings":{}}}),
+        json!({"kind":"circuit_breaker","info":{"summary":null,"settings":{}}}),
     ] {
-        wire["info"].as_object_mut().unwrap().remove(field);
         assert!(
-            serde_json::from_value::<MiddlewareDetailsInfo>(wire).is_err(),
-            "{field}"
-        );
-    }
-    let mut inactive_partial = breaker_wire("consecutive");
-    inactive_partial["info"]
-        .as_object_mut()
-        .unwrap()
-        .remove("slow_call_duration_ms");
-    assert!(serde_json::from_value::<MiddlewareDetailsInfo>(inactive_partial).is_ok());
-    let mut exponential = retry_wire("exponential");
-    exponential["info"]
-        .as_object_mut()
-        .unwrap()
-        .remove("fixed_delay_ms");
-    assert!(serde_json::from_value::<MiddlewareDetailsInfo>(exponential).is_ok());
-}
-
-#[test]
-fn numeric_ranges_units_and_mode_tokens_are_checked() {
-    for (mut wire, key, value) in [
-        (
-            breaker_wire("rate_based"),
-            "failure_rate_threshold",
-            json!(1.01),
-        ),
-        (
-            breaker_wire("rate_based"),
-            "slow_call_rate_threshold",
-            json!(0.0),
-        ),
-        (breaker_wire("rate_based"), "minimum_calls", json!(11)),
-        (
-            breaker_wire("rate_based"),
-            "probes",
-            json!(u64::from(u32::MAX) + 1),
-        ),
-        (breaker_wire("consecutive"), "mode", json!("unknown")),
-        (retry_wire("fixed"), "max_attempts", json!(0)),
-        (retry_wire("fixed"), "max_backoff_ms", json!("1s")),
-        (retry_wire("fixed"), "attempt_start_window_ms", json!(0)),
-        (retry_wire("fixed"), "fixed_delay_ms", json!(0.5)),
-        (retry_wire("fixed"), "kind", json!("future")),
-    ] {
-        wire["info"][key] = row(value);
-        assert!(
-            serde_json::from_value::<MiddlewareDetailsInfo>(wire).is_err(),
-            "{key}"
+            serde_json::from_value::<MiddlewareDetailsInfo>(wire.clone()).is_err(),
+            "{wire}"
         );
     }
     for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        assert!(RateLimiterInfo::try_new(setting(value), setting(1.0), None).is_err());
-        assert!(MiddlewareExtensionInfo::try_new(BTreeMap::from([(
-            "x".into(),
-            setting(SettingValueInfo::F64(value))
-        )]))
-        .is_err());
+        let rows = BTreeMap::from([("x".into(), active(SettingValueInfo::F64(value), "x"))]);
+        assert!(MiddlewareSettingsInfo::try_new(rows, None).is_err());
     }
-}
-
-#[test]
-fn canonical_row_projection_rejects_wrong_family_types_and_preserves_rows() {
-    let rows = BTreeMap::from([
-        (
-            "middleware.rate_limiter.events_per_second".into(),
-            setting(SettingValueInfo::F64(10.0)),
-        ),
-        (
-            "middleware.rate_limiter.cost_per_attempt".into(),
-            setting(SettingValueInfo::F64(1.0)),
-        ),
-    ]);
-    assert_eq!(
-        MiddlewareDetailsInfo::try_from_settings(MiddlewareFamily::RateLimiter, rows.clone())
-            .unwrap(),
-        limiter()
-    );
-    assert!(
-        MiddlewareDetailsInfo::try_from_settings(MiddlewareFamily::Retry, rows.clone()).is_err()
-    );
-    let mut wrong_type = rows.clone();
-    wrong_type
-        .get_mut("middleware.rate_limiter.events_per_second")
-        .unwrap()
-        .value = SettingValueInfo::Text("10".into());
-    assert!(
-        MiddlewareDetailsInfo::try_from_settings(MiddlewareFamily::RateLimiter, wrong_type)
-            .is_err()
-    );
-    let mut extra = rows;
-    extra.insert(
-        "middleware.rate_limiter.unknown".into(),
-        setting(SettingValueInfo::Bool(true)),
-    );
-    assert!(
-        MiddlewareDetailsInfo::try_from_settings(MiddlewareFamily::RateLimiter, extra).is_err()
-    );
-    let mut wrong_family = serde_json::to_value(limiter()).unwrap();
-    wrong_family["kind"] = json!("retry");
-    assert!(serde_json::from_value::<MiddlewareDetailsInfo>(wrong_family).is_err());
 }
 
 #[test]
@@ -348,7 +264,8 @@ fn extension_shapes_have_no_arbitrary_json_or_unknown_envelope_fields() {
         json!({"kind":"array","value":[]}),
         json!({"kind":"text","value":{}}),
     ] {
-        let wire = json!({"kind":"observer","info":{"settings":{"custom.x":row(value)}}});
+        let wire =
+            json!({"kind":"observer","info":{"settings":{"custom.x":row("active", value, "x")}}});
         assert!(serde_json::from_value::<MiddlewareDetailsInfo>(wire).is_err());
     }
     for wire in [
@@ -466,7 +383,7 @@ fn stage_replacement_rejects_invalid_information_atomically() {
                 3,
                 MiddlewareDetailsInfo::Custom {
                     name: "".into(),
-                    info: MiddlewareExtensionInfo::default(),
+                    info: MiddlewareSettingsInfo::default(),
                 },
             )],
         },

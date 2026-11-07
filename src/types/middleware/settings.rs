@@ -3,7 +3,8 @@
 // https://obzenflow.dev
 
 use super::MiddlewareInfoError;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -88,7 +89,7 @@ impl<'de> Deserialize<'de> for SettingSubject {
     }
 }
 
-/// Scalar extension information. Nested objects/arrays and raw secret values are not a wire escape hatch.
+/// Scalar setting value. Nested objects/arrays and raw secret values are not a wire escape hatch.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
@@ -104,47 +105,155 @@ pub enum SettingValueInfo {
     Redacted,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-pub struct MiddlewareExtensionInfo {
-    settings: BTreeMap<String, ResolvedSettingInfo<SettingValueInfo>>,
+/// One setting row with the text its middleware writes for it. An automatic row has no
+/// resolved value.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MiddlewareSettingInfo {
+    Active {
+        setting: ResolvedSettingInfo<SettingValueInfo>,
+        display: String,
+    },
+    Inactive {
+        setting: ResolvedSettingInfo<SettingValueInfo>,
+        display: String,
+    },
+    Automatic {
+        display: String,
+    },
 }
 
-impl MiddlewareExtensionInfo {
-    pub fn try_new(
-        settings: BTreeMap<String, ResolvedSettingInfo<SettingValueInfo>>,
-    ) -> Result<Self, MiddlewareInfoError> {
-        let info = Self { settings };
-        info.validate()?;
-        Ok(info)
+impl MiddlewareSettingInfo {
+    pub fn display(&self) -> &str {
+        match self {
+            Self::Active { display, .. }
+            | Self::Inactive { display, .. }
+            | Self::Automatic { display } => display,
+        }
     }
 
-    pub fn settings(&self) -> &BTreeMap<String, ResolvedSettingInfo<SettingValueInfo>> {
-        &self.settings
+    pub fn setting(&self) -> Option<&ResolvedSettingInfo<SettingValueInfo>> {
+        match self {
+            Self::Active { setting, .. } | Self::Inactive { setting, .. } => Some(setting),
+            Self::Automatic { .. } => None,
+        }
     }
 
-    pub(super) fn validate(&self) -> Result<(), MiddlewareInfoError> {
-        for (key, setting) in &self.settings {
-            nonempty("settings.key", key)?;
+    fn validate(&self, key: &str) -> Result<(), MiddlewareInfoError> {
+        if let Some(setting) = self.setting() {
             setting.provenance.validate()?;
-            if let SettingValueInfo::F64(value) = &setting.value {
+            if let SettingValueInfo::F64(value) = setting.value {
                 if !value.is_finite() {
                     return Err(MiddlewareInfoError::new(key, "must be finite"));
                 }
             }
         }
-        Ok(())
+        nonempty(&format!("{key}.display"), self.display())
     }
 }
 
-impl<'de> Deserialize<'de> for MiddlewareExtensionInfo {
+impl Serialize for MiddlewareSettingInfo {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let state = match self {
+            Self::Active { .. } => "active",
+            Self::Inactive { .. } => "inactive",
+            Self::Automatic { .. } => "automatic",
+        };
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("state", state)?;
+        if let Some(setting) = self.setting() {
+            map.serialize_entry("value", &setting.value)?;
+            map.serialize_entry("provenance", &setting.provenance)?;
+        }
+        map.serialize_entry("display", self.display())?;
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for MiddlewareSettingInfo {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+        enum Wire {
+            Active {
+                value: SettingValueInfo,
+                provenance: SettingProvenanceInfo,
+                display: String,
+            },
+            Inactive {
+                value: SettingValueInfo,
+                provenance: SettingProvenanceInfo,
+                display: String,
+            },
+            Automatic {
+                display: String,
+            },
+        }
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::Active {
+                value,
+                provenance,
+                display,
+            } => Self::Active {
+                setting: ResolvedSettingInfo { value, provenance },
+                display,
+            },
+            Wire::Inactive {
+                value,
+                provenance,
+                display,
+            } => Self::Inactive {
+                setting: ResolvedSettingInfo { value, provenance },
+                display,
+            },
+            Wire::Automatic { display } => Self::Automatic { display },
+        })
+    }
+}
+
+/// One attachment's settings keyed by canonical path, with the summary its middleware
+/// writes for the canvas.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct MiddlewareSettingsInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<String>,
+    settings: BTreeMap<String, MiddlewareSettingInfo>,
+}
+
+impl MiddlewareSettingsInfo {
+    pub fn try_new(
+        settings: BTreeMap<String, MiddlewareSettingInfo>,
+        summary: Option<String>,
+    ) -> Result<Self, MiddlewareInfoError> {
+        for (key, setting) in &settings {
+            nonempty("settings.key", key)?;
+            setting.validate(key)?;
+        }
+        if let Some(summary) = &summary {
+            nonempty("summary", summary)?;
+        }
+        Ok(Self { summary, settings })
+    }
+
+    pub fn settings(&self) -> &BTreeMap<String, MiddlewareSettingInfo> {
+        &self.settings
+    }
+
+    pub fn summary(&self) -> Option<&str> {
+        self.summary.as_deref()
+    }
+}
+
+impl<'de> Deserialize<'de> for MiddlewareSettingsInfo {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Wire {
-            settings: BTreeMap<String, ResolvedSettingInfo<SettingValueInfo>>,
+            #[serde(default, deserialize_with = "present")]
+            summary: Option<String>,
+            settings: BTreeMap<String, MiddlewareSettingInfo>,
         }
         let wire = Wire::deserialize(deserializer)?;
-        Self::try_new(wire.settings).map_err(serde::de::Error::custom)
+        Self::try_new(wire.settings, wire.summary).map_err(serde::de::Error::custom)
     }
 }
 
@@ -157,7 +266,7 @@ pub(super) fn nonempty(field: &str, value: &str) -> Result<(), MiddlewareInfoErr
 }
 
 /// Called only for present optional fields. Missing is allowed; explicit null is not.
-pub(super) fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(deserializer).map(Some)

@@ -51,15 +51,41 @@ jobs:
             exit 1
           }
 
-      - name: Show the shipped file set, then dry-run
+      - name: Dry-run, then report the shipped file set
+        env:
+          RELEASE_SHA: ${{ steps.resolve.outputs.sha }}
         run: |
-          {
-            echo '### Files that will be published'
-            echo '<pre>'
-            cargo package --list
-            echo '</pre>'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+
+          package_files="$(cargo package --list)"
+          printf '%s\n' "$package_files"
           cargo publish --dry-run --locked
+
+          file_count="$(wc -l <<< "$package_files" | tr -d '[:space:]')"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+          # One outer code block makes the whole report copyable, nested file list included.
+          {
+            printf '## Publish preflight: PASSED\n\n'
+            printf 'Copy the report below for review before approving publication.\n\n'
+            printf '````markdown\n'
+            printf '# Publish preflight report: obzenflow-topology %s\n\n' "$REQUESTED_VERSION"
+            printf '**Preflight checks: PASSED**\n\n'
+            printf 'Prepared before manual publish approval.\n\n'
+            printf 'Repository: %s\n\n' "$GITHUB_REPOSITORY"
+            printf 'Tag: `v%s`\n\n' "$REQUESTED_VERSION"
+            printf 'Release commit SHA: `%s`\n\n' "$RELEASE_SHA"
+            printf 'Publish workflow: %s\n\n' "$run_url"
+            printf '## Verification\n\n'
+            printf '| Check | Result |\n| --- | --- |\n'
+            printf '| Version format | Passed |\n'
+            printf '| Release tag checkout and commit SHA | Passed |\n'
+            printf '| Tag and manifest versions agree | Passed |\n'
+            printf '| `cargo publish --dry-run --locked` | Passed |\n'
+            printf '\n## Files (%s)\n\n' "$file_count"
+            printf 'Source: `cargo package --list`\n\n'
+            printf '```text\n%s\n```\n' "$package_files"
+            printf '````\n'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Full ci.yml parity against the pinned commit, via the reusable workflow. dco
   # self-skips (pull_request-only), so this runs fmt, clippy, test, policy, and wasm.

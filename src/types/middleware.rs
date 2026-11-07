@@ -5,19 +5,17 @@
 //! Checked, descriptive information about resolved middleware bindings.
 //! These records do not resolve configuration or grant execution authority.
 
-mod builtins;
 mod key;
 mod settings;
 
-pub use builtins::{CircuitBreakerInfo, CircuitBreakerMode, RateLimiterInfo, RetryInfo, RetryKind};
 pub use key::MiddlewareAttachmentKey;
 pub use settings::{
-    MiddlewareExtensionInfo, ResolvedSettingInfo, SettingProvenanceInfo, SettingSubject,
-    SettingValueInfo,
+    MiddlewareSettingInfo, MiddlewareSettingsInfo, ResolvedSettingInfo, SettingProvenanceInfo,
+    SettingSubject, SettingValueInfo,
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("invalid middleware information at {field}: {reason}")]
@@ -94,17 +92,17 @@ impl MiddlewareAttachmentInfo {
     }
 }
 
-/// A single discriminant owns both family identity and its information schema.
+/// The family discriminant. Every family carries the same settings record.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "info", rename_all = "snake_case")]
 pub enum MiddlewareDetailsInfo {
-    RateLimiter(RateLimiterInfo),
-    CircuitBreaker(Box<CircuitBreakerInfo>),
-    Retry(RetryInfo),
-    Observer(MiddlewareExtensionInfo),
+    RateLimiter(MiddlewareSettingsInfo),
+    CircuitBreaker(MiddlewareSettingsInfo),
+    Retry(MiddlewareSettingsInfo),
+    Observer(MiddlewareSettingsInfo),
     Custom {
         name: String,
-        info: MiddlewareExtensionInfo,
+        info: MiddlewareSettingsInfo,
     },
 }
 
@@ -118,13 +116,13 @@ impl<'de> Deserialize<'de> for MiddlewareDetailsInfo {
             deny_unknown_fields
         )]
         enum Wire {
-            RateLimiter(RateLimiterInfo),
-            CircuitBreaker(Box<CircuitBreakerInfo>),
-            Retry(RetryInfo),
-            Observer(MiddlewareExtensionInfo),
+            RateLimiter(MiddlewareSettingsInfo),
+            CircuitBreaker(MiddlewareSettingsInfo),
+            Retry(MiddlewareSettingsInfo),
+            Observer(MiddlewareSettingsInfo),
             Custom {
                 name: String,
-                info: MiddlewareExtensionInfo,
+                info: MiddlewareSettingsInfo,
             },
         }
         let info = match Wire::deserialize(deserializer)? {
@@ -150,25 +148,29 @@ impl MiddlewareDetailsInfo {
         }
     }
 
-    /// Project already-resolved canonical knob rows, without resolving precedence.
+    pub fn settings(&self) -> &MiddlewareSettingsInfo {
+        match self {
+            Self::RateLimiter(info)
+            | Self::CircuitBreaker(info)
+            | Self::Retry(info)
+            | Self::Observer(info)
+            | Self::Custom { info, .. } => info,
+        }
+    }
+
+    /// Place already-resolved rows under their family, without resolving precedence.
     pub fn try_from_settings(
         family: MiddlewareFamily,
-        settings: BTreeMap<String, ResolvedSettingInfo<SettingValueInfo>>,
+        settings: MiddlewareSettingsInfo,
     ) -> Result<Self, MiddlewareInfoError> {
         let info = match family {
-            MiddlewareFamily::RateLimiter => {
-                Self::RateLimiter(RateLimiterInfo::from_settings(settings)?)
-            }
-            MiddlewareFamily::CircuitBreaker => {
-                Self::CircuitBreaker(Box::new(CircuitBreakerInfo::from_settings(settings)?))
-            }
-            MiddlewareFamily::Retry => Self::Retry(RetryInfo::from_settings(settings)?),
-            MiddlewareFamily::Observer => {
-                Self::Observer(MiddlewareExtensionInfo::try_new(settings)?)
-            }
+            MiddlewareFamily::RateLimiter => Self::RateLimiter(settings),
+            MiddlewareFamily::CircuitBreaker => Self::CircuitBreaker(settings),
+            MiddlewareFamily::Retry => Self::Retry(settings),
+            MiddlewareFamily::Observer => Self::Observer(settings),
             MiddlewareFamily::Custom { name } => Self::Custom {
                 name,
-                info: MiddlewareExtensionInfo::try_new(settings)?,
+                info: settings,
             },
         };
         info.validate()?;
@@ -176,15 +178,23 @@ impl MiddlewareDetailsInfo {
     }
 
     fn validate(&self) -> Result<(), MiddlewareInfoError> {
-        match self {
-            Self::RateLimiter(info) => info.validate(),
-            Self::CircuitBreaker(info) => info.validate(),
-            Self::Retry(info) => info.validate(),
-            Self::Observer(info) => info.validate(),
-            Self::Custom { name, info } => {
-                settings::nonempty("custom.name", name)?;
-                info.validate()
-            }
+        let (prefix, family) = match self {
+            Self::RateLimiter(_) => ("middleware.rate_limiter.", "rate limiter"),
+            Self::CircuitBreaker(_) => ("middleware.circuit_breaker.", "circuit breaker"),
+            Self::Retry(_) => ("middleware.retry.", "retry"),
+            Self::Observer(_) => return Ok(()),
+            Self::Custom { name, .. } => return settings::nonempty("custom.name", name),
+        };
+        let outside = self.settings().settings().keys().find(|key| {
+            key.strip_prefix(prefix)
+                .is_none_or(|setting| setting.is_empty())
+        });
+        match outside {
+            Some(key) => Err(MiddlewareInfoError::new(
+                key,
+                format!("must sit under {prefix} for a {family}"),
+            )),
+            None => Ok(()),
         }
     }
 }
