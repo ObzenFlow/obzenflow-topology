@@ -43,8 +43,8 @@ pub use types::{
     SubgraphInternalEdge, TopologySubgraphInfo, TypeHintInfo,
 };
 pub use types::{
-    CircuitBreakerInfo, CircuitBreakerMode, MiddlewareAttachmentKey, MiddlewareDetailsInfo,
-    MiddlewareExtensionInfo, MiddlewareInfoError, RateLimiterInfo, ResolvedSettingInfo, RetryInfo,
-    RetryKind, SettingProvenanceInfo, SettingSubject, SettingValueInfo,
+    MiddlewareAttachmentKey, MiddlewareDetailsInfo, MiddlewareInfoError, MiddlewareSettingInfo,
+    MiddlewareSettingsInfo, ResolvedSettingInfo, SettingProvenanceInfo, SettingSubject,
+    SettingValueInfo,
 };
 pub use validation::{TopologyError, ValidationResult};

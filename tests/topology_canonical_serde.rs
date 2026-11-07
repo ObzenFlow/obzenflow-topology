@@ -19,22 +19,25 @@ use obzenflow_topology::{
     BoundaryPortSpec, CompositePortRef, ContractInfo, DirectedEdge, EdgeTypingInfo,
     EdgeTypingLabelSource, EdgeTypingRole, JoinMetadataInfo, MiddlewareAttachmentInfo,
     MiddlewareAttachmentKey, MiddlewareAuthoredSite, MiddlewareDetailsInfo, MiddlewareFamily,
-    MiddlewareInfo, MiddlewareOperation, PortDirection, RateLimiterInfo, ResolvedSettingInfo,
-    SettingProvenanceInfo, SettingSubject, StageInfo, StageStatus, StageSubgraphMembership,
-    StageType, StageTypingInfo, SubgraphInternalEdge, Topology, TopologyBuilder,
-    TopologySubgraphInfo, TypeHintInfo,
+    MiddlewareInfo, MiddlewareOperation, MiddlewareSettingInfo, MiddlewareSettingsInfo,
+    PortDirection, ResolvedSettingInfo, SettingProvenanceInfo, SettingSubject, SettingValueInfo,
+    StageInfo, StageStatus, StageSubgraphMembership, StageType, StageTypingInfo,
+    SubgraphInternalEdge, Topology, TopologyBuilder, TopologySubgraphInfo, TypeHintInfo,
 };
 
-fn limiter_setting(value: f64) -> ResolvedSettingInfo<f64> {
-    ResolvedSettingInfo {
-        value,
-        provenance: SettingProvenanceInfo {
-            source: "dsl".into(),
-            scope: "stage:enriched".into(),
-            winner_subject: SettingSubject::Effect {
-                effect_type: "catalog.lookup".into(),
+fn limiter_setting(value: f64, display: &str) -> MiddlewareSettingInfo {
+    MiddlewareSettingInfo::Active {
+        setting: ResolvedSettingInfo {
+            value: SettingValueInfo::F64(value),
+            provenance: SettingProvenanceInfo {
+                source: "dsl".into(),
+                scope: "stage:enriched".into(),
+                winner_subject: SettingSubject::Effect {
+                    effect_type: "catalog.lookup".into(),
+                },
             },
         },
+        display: display.into(),
     }
 }
 
@@ -132,10 +135,25 @@ fn topology_round_trips_with_full_annotations() {
                     effect_type: "catalog.lookup".into(),
                 },
                 details: MiddlewareDetailsInfo::RateLimiter(
-                    RateLimiterInfo::try_new(
-                        limiter_setting(10.0),
-                        limiter_setting(1.0),
-                        Some(limiter_setting(20.0)),
+                    MiddlewareSettingsInfo::try_new(
+                        [
+                            (
+                                "middleware.rate_limiter.events_per_second",
+                                limiter_setting(10.0, "10 events/s"),
+                            ),
+                            (
+                                "middleware.rate_limiter.cost_per_attempt",
+                                limiter_setting(1.0, "1 tokens"),
+                            ),
+                            (
+                                "middleware.rate_limiter.burst_capacity",
+                                limiter_setting(20.0, "20 tokens"),
+                            ),
+                        ]
+                        .into_iter()
+                        .map(|(path, row)| (path.to_owned(), row))
+                        .collect(),
+                        Some("10".into()),
                     )
                     .unwrap(),
                 ),
@@ -258,10 +276,11 @@ fn topology_round_trips_with_full_annotations() {
             effect_type: "catalog.lookup".into()
         }
     );
-    let MiddlewareDetailsInfo::RateLimiter(info) = &limiter.details else {
-        panic!("limiter info")
-    };
-    assert_eq!(info.burst_capacity().unwrap().value, 20.0);
+    let burst = &limiter.details.settings().settings()["middleware.rate_limiter.burst_capacity"];
+    assert_eq!(
+        burst.setting().map(|setting| &setting.value),
+        Some(&SettingValueInfo::F64(20.0))
+    );
     let subgraph = join_back.subgraph.as_ref().expect("subgraph membership");
     assert_eq!(subgraph.subgraph_id, "ai_map_reduce:digest");
 

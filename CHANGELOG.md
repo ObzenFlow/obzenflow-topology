@@ -6,6 +6,26 @@ Compatibility notes cover the Rust API and serialized topology format.
 
 ## Unreleased
 
+## 0.8.0 - 2026-11-06
+
+Built-in middleware settings travel as rows, in the record observer and custom middleware
+already use, so a new built-in setting needs no topology release. Upgrade topology
+producers and Studio together; the previous middleware format is no longer accepted.
+
+### Changed
+
+- **Breaking:** Every `MiddlewareDetailsInfo` variant carries a `MiddlewareSettingsInfo`
+  keyed by canonical path. `RateLimiterInfo`, `CircuitBreakerInfo`, `RetryInfo`,
+  `CircuitBreakerMode` and `RetryKind` are removed; read a setting through
+  `MiddlewareDetailsInfo::settings()`.
+- **Breaking:** `MiddlewareExtensionInfo` is renamed `MiddlewareSettingsInfo`. Each row is a
+  `MiddlewareSettingInfo`, active or inactive with its resolved setting or automatic
+  without one, and carries its display text. A record can also carry a summary.
+- **Breaking:** `MiddlewareDetailsInfo::try_from_settings` takes a `MiddlewareSettingsInfo`.
+- Loading middleware data checks only the shape of each row. A built-in family's rows must
+  sit under its prefix, such as `middleware.retry.`, and display text and summaries must not
+  be empty. Ranges, modes and required settings are no longer checked.
+
 ## 0.7.0 - 2026-10-14
 
 ### Added

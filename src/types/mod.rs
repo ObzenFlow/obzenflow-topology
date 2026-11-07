@@ -26,10 +26,10 @@ pub use backpressure::BackpressureInfo;
 pub use contract::ContractInfo;
 pub use join::JoinMetadataInfo;
 pub use middleware::{
-    CircuitBreakerInfo, CircuitBreakerMode, MiddlewareAttachmentInfo, MiddlewareAttachmentKey,
-    MiddlewareAuthoredSite, MiddlewareDetailsInfo, MiddlewareExtensionInfo, MiddlewareFamily,
-    MiddlewareInfo, MiddlewareInfoError, MiddlewareOperation, RateLimiterInfo, ResolvedSettingInfo,
-    RetryInfo, RetryKind, SettingProvenanceInfo, SettingSubject, SettingValueInfo,
+    MiddlewareAttachmentInfo, MiddlewareAttachmentKey, MiddlewareAuthoredSite,
+    MiddlewareDetailsInfo, MiddlewareFamily, MiddlewareInfo, MiddlewareInfoError,
+    MiddlewareOperation, MiddlewareSettingInfo, MiddlewareSettingsInfo, ResolvedSettingInfo,
+    SettingProvenanceInfo, SettingSubject, SettingValueInfo,
 };
 pub use scc_id::SccId;
 pub use stage_type::{StageRole, StageType};
