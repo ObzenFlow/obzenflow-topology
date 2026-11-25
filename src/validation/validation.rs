@@ -34,6 +34,9 @@ pub enum TopologyError {
     #[error("Invalid middleware information for stage {stage}: {reason}")]
     InvalidMiddlewareInfo { stage: StageId, reason: String },
 
+    #[error("Invalid port information for stage {stage}: {reason}")]
+    InvalidStagePorts { stage: StageId, reason: String },
+
     #[error("Self-cycle detected: stage '{stage}' connects to itself")]
     SelfCycle { stage: String },
 
@@ -204,14 +207,19 @@ pub fn validate_connection_semantics(
     }
 }
 
-/// Validate descriptive middleware records before construction or annotation replacement.
-pub(crate) fn validate_middleware_info<'a>(
+pub(crate) fn validate_stage_annotations<'a>(
     stages: impl Iterator<Item = &'a StageInfo>,
 ) -> ValidationResult<()> {
     // Binding identity belongs to the whole topology, including bindings on
     // different stages. Validate before any consumer builds a keyed index.
     let mut attachment_keys = HashSet::new();
     for stage in stages {
+        crate::types::validate_ports(&stage.ports).map_err(|reason| {
+            TopologyError::InvalidStagePorts {
+                stage: stage.id,
+                reason: reason.into(),
+            }
+        })?;
         if let Some(info) = &stage.middleware {
             info.validate()
                 .map_err(|error| TopologyError::InvalidMiddlewareInfo {
@@ -236,7 +244,7 @@ pub fn validate_edges_and_structure(
     stages: &HashMap<StageId, StageInfo>,
     edges: &[DirectedEdge],
 ) -> ValidationResult<()> {
-    validate_middleware_info(stages.values())?;
+    validate_stage_annotations(stages.values())?;
     let mut downstream: HashMap<StageId, HashSet<StageId>> = HashMap::new();
     let mut upstream: HashMap<StageId, HashSet<StageId>> = HashMap::new();
 

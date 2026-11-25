@@ -4,7 +4,7 @@
 
 mod validation;
 
-pub(crate) use validation::validate_middleware_info;
+pub(crate) use validation::validate_stage_annotations;
 
 pub use validation::{
     compute_sccs, find_disconnected_stages, validate_acyclic, validate_all_connections,

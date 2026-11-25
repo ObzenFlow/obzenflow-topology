@@ -43,6 +43,10 @@ pub use types::{
     SubgraphInternalEdge, TopologySubgraphInfo, TypeHintInfo,
 };
 pub use types::{
+    ExternalPortInfo, PortRelation, PortRequest, RequestGuarantee, RequestOutcome,
+    SystemConnectionInfo,
+};
+pub use types::{
     MiddlewareAttachmentKey, MiddlewareDetailsInfo, MiddlewareInfoError, MiddlewareSettingInfo,
     MiddlewareSettingsInfo, ResolvedSettingInfo, SettingProvenanceInfo, SettingSubject,
     SettingValueInfo,

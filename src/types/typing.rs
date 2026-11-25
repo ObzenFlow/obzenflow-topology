@@ -27,6 +27,21 @@ pub enum TypeHintInfo {
     Mixed { names: Vec<String> },
 }
 
+/// Formats alternative type names in declaration order.
+pub fn display_type_set<S: AsRef<str>>(names: &[S]) -> Option<String> {
+    let mut seen = std::collections::HashSet::new();
+    let names: Vec<_> = names
+        .iter()
+        .map(|name| name.as_ref().trim())
+        .filter(|name| !name.is_empty() && seen.insert(*name))
+        .collect();
+    match names.as_slice() {
+        [] => None,
+        [name] => Some((*name).to_owned()),
+        _ => Some(format!("{{ {} }}", names.join(" | "))),
+    }
+}
+
 impl TypeHintInfo {
     /// Convenience constructor for an exact type hint.
     pub fn exact(name: impl Into<String>) -> Self {
@@ -47,8 +62,8 @@ impl TypeHintInfo {
     /// Render the raw type name for UI display.
     ///
     /// Strips Rust path qualifiers (`crate::module::Type` -> `Type`), including
-    /// inside generics. `Mixed` renders as a set, `{ A, B }`. Returns `None`
-    /// for `Unspecified`.
+    /// inside generics. Multiple types render as `{ A | B }`. Qualified
+    /// names distinguish members with the same short name.
     ///
     /// This is the conservative v0.5 formatter. Studio overlay feedback may
     /// drive future refinement; clients must treat the result as render-only
@@ -56,15 +71,34 @@ impl TypeHintInfo {
     pub fn display_name(&self) -> Option<String> {
         match self {
             TypeHintInfo::Exact { name } => Some(format_display_name(name)),
-            TypeHintInfo::Mixed { names } => Some(format!(
-                "{{ {} }}",
-                names
+            TypeHintInfo::Mixed { names } => {
+                let mut seen = std::collections::HashSet::new();
+                let members: Vec<_> = names
                     .iter()
-                    .map(String::as_str)
-                    .map(format_display_name)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )),
+                    .map(|s| s.trim())
+                    .filter(|name| !name.is_empty() && seen.insert(*name))
+                    .collect();
+                let labels: Vec<_> = members
+                    .iter()
+                    .map(|name| format_display_name(name))
+                    .collect();
+                let mut counts = std::collections::HashMap::new();
+                for label in &labels {
+                    *counts.entry(label.as_str()).or_insert(0usize) += 1;
+                }
+                let labels: Vec<_> = members
+                    .iter()
+                    .zip(&labels)
+                    .map(|(name, label)| {
+                        if counts[label.as_str()] > 1 {
+                            *name
+                        } else {
+                            label.as_str()
+                        }
+                    })
+                    .collect();
+                display_type_set(&labels)
+            }
             TypeHintInfo::Unspecified => None,
         }
     }
@@ -243,7 +277,21 @@ mod tests {
         let hint = TypeHintInfo::mixed(["orders::OrderPlaced", "Vec<orders::OrderCancelled>"]);
         assert_eq!(
             hint.display_name().as_deref(),
-            Some("{ OrderPlaced, Vec<OrderCancelled> }")
+            Some("{ OrderPlaced | Vec<OrderCancelled> }")
+        );
+    }
+
+    #[test]
+    fn mixed_colliding_names_preserve_qualification() {
+        let hint = TypeHintInfo::mixed([
+            "left::Fault",
+            "right::Fault",
+            "right::Fault",
+            "app::Result<A, B>",
+        ]);
+        assert_eq!(
+            hint.display_name().as_deref(),
+            Some("{ left::Fault | right::Fault | Result<A, B> }")
         );
     }
 

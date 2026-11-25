@@ -437,14 +437,14 @@ impl Topology {
     /// constructed and validated.
     ///
     /// Returns the previous `StageInfo` if the id existed, `None` otherwise.
-    /// Invalid middleware information or duplicate binding keys fail before
+    /// Invalid ports, middleware information or duplicate binding keys fail before
     /// modifying the topology, including collisions with another stage.
     /// Structural fields (`id`, `name`, `stage_type`) on the new value
     /// must match the existing entry; this method only intends to
     /// mutate annotations. Mismatches are not enforced here, but
     /// `validate_with_level` should be re-run if structural fields change.
     pub fn replace_stage_info(&mut self, info: StageInfo) -> ValidationResult<Option<StageInfo>> {
-        crate::validation::validate_middleware_info(
+        crate::validation::validate_stage_annotations(
             self.stages
                 .values()
                 .filter(|stage| stage.id != info.id)

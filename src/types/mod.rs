@@ -7,6 +7,7 @@ pub mod contract;
 pub mod join;
 pub mod middleware;
 pub mod scc_id;
+mod stage_port;
 pub mod stage_type;
 pub mod status;
 pub mod subgraphs;
@@ -32,6 +33,11 @@ pub use middleware::{
     SettingProvenanceInfo, SettingSubject, SettingValueInfo,
 };
 pub use scc_id::SccId;
+pub(crate) use stage_port::validate_ports;
+pub use stage_port::{
+    ExternalPortInfo, PortRelation, PortRequest, RequestGuarantee, RequestOutcome,
+    SystemConnectionInfo,
+};
 pub use stage_type::{StageRole, StageType};
 pub use status::StageStatus;
 pub use subgraphs::{

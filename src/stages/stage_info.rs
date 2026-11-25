@@ -4,8 +4,8 @@
 
 use super::StageId;
 use crate::types::{
-    JoinMetadataInfo, MiddlewareInfo, StageRole, StageStatus, StageSubgraphMembership, StageType,
-    StageTypingInfo,
+    ExternalPortInfo, JoinMetadataInfo, MiddlewareInfo, StageRole, StageStatus,
+    StageSubgraphMembership, StageType, StageTypingInfo,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +14,7 @@ use serde::{Deserialize, Serialize};
 /// Structural fields (`id`, `name`, `stage_type`) drive validation, SCC
 /// computation, and traversal. The remaining fields are optional
 /// annotations that ObzenFlow populates during flow build (FLOWIP-114b);
-/// graph algorithms must not depend on them. A `StageInfo` with every
-/// annotation set to `None` is still a valid topology stage.
+/// graph algorithms must not depend on them. A stage can omit all annotations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct StageInfo {
@@ -42,6 +41,10 @@ pub struct StageInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub middleware: Option<MiddlewareInfo>,
 
+    /// External interfaces and the systems bound to them for this flow.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<ExternalPortInfo>,
+
     /// Catalog/stream source classification for join stages (FLOWIP-082i).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub join_metadata: Option<JoinMetadataInfo>,
@@ -66,6 +69,7 @@ impl StageInfo {
             role: None,
             is_cycle_member: None,
             middleware: None,
+            ports: Vec::new(),
             join_metadata: None,
             typing: None,
             subgraph: None,
